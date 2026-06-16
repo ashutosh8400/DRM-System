@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Eye, EyeOff, Lock, Mail } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import Toast from '../components/Toast'
 
 export default function LoginPage() {
   const { login } = useAuth()
@@ -8,21 +9,44 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
+  const [toast, setToast] = useState('')
+  const [toastType, setToastType] = useState('error')
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (event) => {
     event.preventDefault()
     setError('')
+
+    if (!username.trim()) {
+      setToastType('error')
+      setToast('Please enter username')
+      return
+    }
+
+    if (!password.trim()) {
+      setToastType('error')
+      setToast('Please enter password')
+      return
+    }
+
     setLoading(true)
 
     try {
-      const result = await login(username, password)
+      const result = await login(username.trim(), password)
       if (result.success) {
+        setToastType('success')
+        setToast('Login successful')
         return
       }
-      setError(result.message || 'Invalid username or password')
+      const message = result.message || 'Invalid username or password'
+      setError(message)
+      setToastType('error')
+      setToast(message)
     } catch (err) {
-      setError(err.message || 'Unable to sign in')
+      const message = err.message || 'Unable to sign in'
+      setError(message)
+      setToastType('error')
+      setToast(message)
     } finally {
       setLoading(false)
     }
@@ -30,6 +54,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-900 flex items-center justify-center p-4">
+      <Toast message={toast} type={toastType} onClose={() => setToast('')} />
       <div className="flex gap-12 w-full max-w-5xl">
         <div className="hidden lg:flex flex-1 flex-col justify-center text-white">
           <div className="mb-8">
@@ -74,7 +99,7 @@ export default function LoginPage() {
               Password: <code className="bg-blue-100 px-2 py-1 rounded">admin123</code>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-5" noValidate>
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Username</label>
                 <div className="relative">

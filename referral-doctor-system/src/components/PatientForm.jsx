@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import Toast from './Toast'
 
 export default function PatientForm({ patient, onSave, onCancel }) {
   const [formData, setFormData] = useState(
@@ -15,10 +16,12 @@ export default function PatientForm({ patient, onSave, onCancel }) {
     }
   )
   const [error, setError] = useState('')
+  const [toast, setToast] = useState('')
 
   const handleChange = (e) => {
     const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
+    const nextValue = name === 'mobile' ? value.replace(/\D/g, '').slice(0, 10) : value
+    setFormData(prev => ({ ...prev, [name]: nextValue }))
   }
 
   const handleSubmit = (e) => {
@@ -27,7 +30,16 @@ export default function PatientForm({ patient, onSave, onCancel }) {
     const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     
     if (formData.visitDate && formData.visitDate < todayStr) {
-      setError('Visit Date cannot be in the past (backdated visits are not allowed).')
+      const message = 'Visit Date cannot be in the past (backdated visits are not allowed).'
+      setError(message)
+      setToast(message)
+      return
+    }
+
+    if (!/^\d{10}$/.test(String(formData.mobile || '').trim())) {
+      const message = 'Mobile number must be exactly 10 digits'
+      setError(message)
+      setToast(message)
       return
     }
     
@@ -37,6 +49,7 @@ export default function PatientForm({ patient, onSave, onCancel }) {
 
   return (
     <div className="bg-white dark:bg-secondary rounded-lg shadow-lg p-6 max-w-2xl">
+      <Toast message={toast} onClose={() => setToast('')} />
       <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
         {patient ? 'Edit Patient' : 'Add New Patient'}
       </h2>
@@ -71,6 +84,9 @@ export default function PatientForm({ patient, onSave, onCancel }) {
               name="mobile"
               value={formData.mobile}
               onChange={handleChange}
+              inputMode="numeric"
+              maxLength={10}
+              pattern="\d{10}"
               required
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-primary dark:border-gray-600 dark:text-white"
             />

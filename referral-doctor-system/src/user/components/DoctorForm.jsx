@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react'
+import Toast from '../../components/Toast'
 
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -14,10 +15,12 @@ export default function DoctorForm({ doctor, onSave, onCancel }) {
   }), [doctor])
   const [formData, setFormData] = useState(initialData)
   const [errors, setErrors] = useState({})
+  const [toast, setToast] = useState('')
 
   const handleChange = (e) => {
     const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
+    const nextValue = name === 'mobile' ? value.replace(/\D/g, '').slice(0, 10) : value
+    setFormData(prev => ({ ...prev, [name]: nextValue }))
     setErrors(prev => ({ ...prev, [name]: '' }))
   }
 
@@ -31,6 +34,9 @@ export default function DoctorForm({ doctor, onSave, onCancel }) {
       nextErrors.doctorDate = 'Backdated doctor entries are not allowed'
     }
     setErrors(nextErrors)
+    if (Object.keys(nextErrors).length > 0) {
+      setToast(Object.values(nextErrors)[0])
+    }
     return Object.keys(nextErrors).length === 0
   }
 
@@ -49,6 +55,7 @@ export default function DoctorForm({ doctor, onSave, onCancel }) {
 
   return (
     <div className="bg-white dark:bg-secondary rounded-lg shadow-lg p-6 max-w-4xl mb-6">
+      <Toast message={toast} onClose={() => setToast('')} />
       <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
         {doctor ? 'Edit Referral Doctor' : 'Add Referral Doctor'}
       </h2>
@@ -67,6 +74,9 @@ export default function DoctorForm({ doctor, onSave, onCancel }) {
                 name={name}
                 value={formData[name] || ''}
                 onChange={handleChange}
+                inputMode={name === 'mobile' ? 'numeric' : undefined}
+                maxLength={name === 'mobile' ? 10 : undefined}
+                pattern={name === 'mobile' ? '\\d{10}' : undefined}
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-primary dark:text-white ${
                   errors[name] ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                 }`}
