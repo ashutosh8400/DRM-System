@@ -30,6 +30,14 @@ function requireAdmin(event) {
   return { authorized: true, user };
 }
 
+function requireUser(event) {
+  const user = getSessionUser(event);
+  if (!user) {
+    return { authorized: false, response: { success: false, message: 'Please login again.' } };
+  }
+  return { authorized: true, user };
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -168,112 +176,164 @@ function setupIpcHandlers() {
   });
 
   // Doctor handlers
-  ipcMain.handle('doctor:getAll', async () => {
-    return db.getAllDoctors();
+  ipcMain.handle('doctor:getAll', async (event) => {
+    const auth = requireUser(event);
+    if (!auth.authorized) return auth.response;
+    return db.getAllDoctors(auth.user.id);
   });
 
   ipcMain.handle('doctor:add', async (event, doctorData) => {
-    return db.addDoctor(doctorData);
+    const auth = requireUser(event);
+    if (!auth.authorized) return auth.response;
+    return db.addDoctor(doctorData, auth.user.id);
   });
 
   ipcMain.handle('doctor:update', async (event, id, doctorData) => {
-    return db.updateDoctor(id, doctorData);
+    const auth = requireUser(event);
+    if (!auth.authorized) return auth.response;
+    return db.updateDoctor(id, doctorData, auth.user.id);
   });
 
   ipcMain.handle('doctor:delete', async (event, id) => {
-    return db.deleteDoctor(id);
+    const auth = requireUser(event);
+    if (!auth.authorized) return auth.response;
+    return db.deleteDoctor(id, auth.user.id);
   });
 
   ipcMain.handle('doctor:getById', async (event, id) => {
-    return db.getDoctorById(id);
+    const auth = requireUser(event);
+    if (!auth.authorized) return null;
+    return db.getDoctorById(id, auth.user.id);
   });
 
   ipcMain.handle('doctor:getReferralCount', async (event, id) => {
-    return db.getDoctorReferralCount(id);
+    const auth = requireUser(event);
+    if (!auth.authorized) return 0;
+    return db.getDoctorReferralCount(id, auth.user.id);
   });
 
   // Patient handlers
-  ipcMain.handle('patient:getAll', async () => {
-    return db.getAllPatients();
+  ipcMain.handle('patient:getAll', async (event) => {
+    const auth = requireUser(event);
+    if (!auth.authorized) return auth.response;
+    return db.getAllPatients(auth.user.id);
   });
 
   ipcMain.handle('patient:add', async (event, patientData) => {
-    return db.addPatient(patientData);
+    const auth = requireUser(event);
+    if (!auth.authorized) return auth.response;
+    return db.addPatient(patientData, auth.user.id);
   });
 
   ipcMain.handle('patient:update', async (event, id, patientData) => {
-    return db.updatePatient(id, patientData);
+    const auth = requireUser(event);
+    if (!auth.authorized) return auth.response;
+    return db.updatePatient(id, patientData, auth.user.id);
   });
 
   ipcMain.handle('patient:delete', async (event, id) => {
-    return db.deletePatient(id);
+    const auth = requireUser(event);
+    if (!auth.authorized) return auth.response;
+    return db.deletePatient(id, auth.user.id);
   });
 
   ipcMain.handle('patient:getById', async (event, id) => {
-    return db.getPatientById(id);
+    const auth = requireUser(event);
+    if (!auth.authorized) return null;
+    return db.getPatientById(id, auth.user.id);
   });
 
   ipcMain.handle('patient:getVisitHistory', async (event, patientId) => {
-    return db.getPatientVisitHistory(patientId);
+    const auth = requireUser(event);
+    if (!auth.authorized) return [];
+    return db.getPatientVisitHistory(patientId, auth.user.id);
   });
 
   // Referral handlers
-  ipcMain.handle('referral:getAll', async () => {
-    return db.getAllReferrals();
+  ipcMain.handle('referral:getAll', async (event) => {
+    const auth = requireUser(event);
+    if (!auth.authorized) return auth.response;
+    return db.getAllReferrals(auth.user.id);
   });
 
   ipcMain.handle('referral:add', async (event, referralData) => {
-    return db.addReferral(referralData);
+    const auth = requireUser(event);
+    if (!auth.authorized) return auth.response;
+    return db.addReferral(referralData, auth.user.id);
   });
 
   ipcMain.handle('referral:update', async (event, id, data) => {
-    return db.updateReferral(id, data);
+    const auth = requireUser(event);
+    if (!auth.authorized) return auth.response;
+    return db.updateReferral(id, data, auth.user.id);
   });
 
   ipcMain.handle('referral:delete', async (event, id) => {
-    return db.deleteReferral(id);
+    const auth = requireUser(event);
+    if (!auth.authorized) return auth.response;
+    return db.deleteReferral(id, auth.user.id);
   });
 
   ipcMain.handle('referral:getByPatient', async (event, patientId) => {
-    return db.getReferralsByPatient(patientId);
+    const auth = requireUser(event);
+    if (!auth.authorized) return [];
+    return db.getReferralsByPatient(patientId, auth.user.id);
   });
 
   ipcMain.handle('referral:getRecentByDoctor', async (event, doctorId, days = 7) => {
-    return db.getRecentReferralsByDoctor(doctorId, days);
+    const auth = requireUser(event);
+    if (!auth.authorized) return [];
+    return db.getRecentReferralsByDoctor(doctorId, days, auth.user.id);
   });
 
   // Dashboard handlers
-  ipcMain.handle('dashboard:getStats', async () => {
-    return db.getDashboardStats();
+  ipcMain.handle('dashboard:getStats', async (event) => {
+    const auth = requireUser(event);
+    if (!auth.authorized) return auth.response;
+    return db.getDashboardStats(auth.user.id);
   });
 
-  ipcMain.handle('dashboard:getRecentReferrals', async () => {
-    return db.getRecentReferrals(10);
+  ipcMain.handle('dashboard:getRecentReferrals', async (event) => {
+    const auth = requireUser(event);
+    if (!auth.authorized) return [];
+    return db.getRecentReferrals(10, auth.user.id);
   });
 
-  ipcMain.handle('dashboard:getTopDoctors', async () => {
-    return db.getTopDoctors(7);
+  ipcMain.handle('dashboard:getTopDoctors', async (event) => {
+    const auth = requireUser(event);
+    if (!auth.authorized) return [];
+    return db.getTopDoctors(7, auth.user.id);
   });
 
   // Billing handlers
-  ipcMain.handle('bill:getAll', async () => {
-    return db.getAllBills();
+  ipcMain.handle('bill:getAll', async (event) => {
+    const auth = requireUser(event);
+    if (!auth.authorized) return auth.response;
+    return db.getAllBills(auth.user.id);
   });
 
   ipcMain.handle('bill:add', async (event, billData) => {
-    return db.addBill(billData);
+    const auth = requireUser(event);
+    if (!auth.authorized) return auth.response;
+    return db.addBill(billData, auth.user.id);
   });
 
   ipcMain.handle('bill:getById', async (event, id) => {
-    return db.getBillById(id);
+    const auth = requireUser(event);
+    if (!auth.authorized) return null;
+    return db.getBillById(id, auth.user.id);
   });
 
   ipcMain.handle('bill:update', async (event, id, data) => {
-    return db.updateBill(id, data);
+    const auth = requireUser(event);
+    if (!auth.authorized) return auth.response;
+    return db.updateBill(id, data, auth.user.id);
   });
 
   ipcMain.handle('bill:getByPatient', async (event, patientId) => {
-    return db.getBillsByPatient(patientId);
+    const auth = requireUser(event);
+    if (!auth.authorized) return [];
+    return db.getBillsByPatient(patientId, auth.user.id);
   });
 
   ipcMain.handle('bill:delete', async (event, id) => {
@@ -287,28 +347,40 @@ function setupIpcHandlers() {
 
   // Return handlers
   ipcMain.handle('return:add', async (event, data) => {
-    return db.addReturn(data);
+    const auth = requireUser(event);
+    if (!auth.authorized) return auth.response;
+    return db.addReturn(data, auth.user.id);
   });
 
   ipcMain.handle('return:getByBill', async (event, billId) => {
-    return db.getReturnsByBillId(billId);
+    const auth = requireUser(event);
+    if (!auth.authorized) return [];
+    return db.getReturnsByBillId(billId, auth.user.id);
   });
 
   // Report handlers
   ipcMain.handle('report:getDoctorWise', async (event, days = 7) => {
-    return db.getDoctorWiseReport(days);
+    const auth = requireUser(event);
+    if (!auth.authorized) return [];
+    return db.getDoctorWiseReport(days, auth.user.id);
   });
 
   ipcMain.handle('report:getRevenue', async (event, days = 30) => {
-    return db.getRevenueReport(days);
+    const auth = requireUser(event);
+    if (!auth.authorized) return [];
+    return db.getRevenueReport(days, auth.user.id);
   });
 
-  ipcMain.handle('report:getServiceWise', async () => {
-    return db.getServiceWiseReport();
+  ipcMain.handle('report:getServiceWise', async (event) => {
+    const auth = requireUser(event);
+    if (!auth.authorized) return [];
+    return db.getServiceWiseReport(auth.user.id);
   });
 
   ipcMain.handle('report:getReferralPayment', async (event, days = 7) => {
-    return db.getReferralPaymentReport(days);
+    const auth = requireUser(event);
+    if (!auth.authorized) return [];
+    return db.getReferralPaymentReport(days, auth.user.id);
   });
 
   // License handlers

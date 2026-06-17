@@ -71,13 +71,13 @@ export default function InvoiceDetailPage() {
     )
   }
 
-  const status = bill.status || bill.paymentStatus || 'Pending'
-  const isPaid = ['Paid', 'completed'].includes(status)
   const amount = Number(bill.amount || bill.subtotal || 0)
   const discount = Number(bill.discount || 0)
   const finalAmount = Number(bill.finalAmount || bill.total || Math.max(0, amount - discount))
-  const paidAmount = isPaid ? finalAmount : Number(bill.paidAmount || 0)
-  const dueAmount = isPaid ? 0 : Number(bill.dueAmount ?? Math.max(0, finalAmount - paidAmount))
+  const status = bill.status || bill.paymentStatus || 'Pending'
+  const savedPaidAmount = Number(bill.paidAmount || 0)
+  const isPaid = ['Paid', 'completed'].includes(status) || savedPaidAmount >= finalAmount
+  const paidAmount = isPaid ? finalAmount : savedPaidAmount
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto relative">
@@ -188,10 +188,6 @@ export default function InvoiceDetailPage() {
             <div className="flex justify-between text-green-700 dark:text-green-300 font-semibold">
               <span>Paid Amount:</span>
               <span>{money(paidAmount)}</span>
-            </div>
-            <div className="flex justify-between text-orange-700 dark:text-orange-300 font-semibold">
-              <span>Due Amount:</span>
-              <span>{money(dueAmount)}</span>
             </div>
             <p className="text-[11px] text-gray-400 text-right">Payment via {bill.paymentMode || 'N/A'}</p>
           </div>
