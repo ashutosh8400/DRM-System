@@ -513,11 +513,9 @@ class APIClient {
         }
         const finalAmount = Math.max(0, amount - discount);
         const requestedPaidAmount = Math.min(finalAmount, Number(data.paidAmount) || 0);
-        const status = data.status || data.paymentStatus || (finalAmount > 0 && requestedPaidAmount >= finalAmount ? 'Paid' : 'Pending');
+        const status = requestedPaidAmount >= finalAmount ? 'Paid' : 'Pending';
         const paidAmount = requestedPaidAmount;
         const dueAmount = Math.max(0, finalAmount - paidAmount);
-        if (status === 'Paid' && paidAmount <= 0) return { success: false, message: 'Paid status requires paid amount greater than 0.' };
-        if (status === 'Paid' && paidAmount < finalAmount) return { success: false, message: 'Paid status requires full final amount to be paid.' };
         const newBill = {
           ...data,
           id,
@@ -575,11 +573,9 @@ class APIClient {
         }
         const finalAmount = Math.max(0, amount - discount);
         const requestedPaidAmount = Math.min(finalAmount, Number(data.paidAmount ?? existing.paidAmount) || 0);
-        const status = data.status || data.paymentStatus || (finalAmount > 0 && requestedPaidAmount >= finalAmount ? 'Paid' : 'Pending');
+        const status = requestedPaidAmount >= finalAmount ? 'Paid' : 'Pending';
         const paidAmount = requestedPaidAmount;
         const dueAmount = Math.max(0, finalAmount - paidAmount);
-        if (status === 'Paid' && paidAmount <= 0) return { success: false, message: 'Paid status requires paid amount greater than 0.' };
-        if (status === 'Paid' && paidAmount < finalAmount) return { success: false, message: 'Paid status requires full final amount to be paid.' };
         const updated = bills.map(b => b.id === id ? {
           ...b,
           ...data,
