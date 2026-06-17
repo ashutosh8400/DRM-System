@@ -40,6 +40,38 @@ class APIClient {
     localStorage.setItem(name, JSON.stringify(data));
   }
 
+  _getCurrentUserId() {
+    try {
+      return JSON.parse(localStorage.getItem('currentUser') || '{}').id || null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  _forCurrentUser(rows) {
+    const userId = this._getCurrentUserId();
+    return rows.filter(row => row.userId === userId);
+  }
+
+  _withCurrentUser(data) {
+    return { ...data, userId: this._getCurrentUserId() };
+  }
+
+  _claimUnownedData(userId) {
+    for (const table of ['mock_doctors', 'mock_patients', 'mock_referrals', 'mock_bills']) {
+      const rows = this._getTable(table);
+      let changed = false;
+      const nextRows = rows.map(row => {
+        if (!row.userId) {
+          changed = true;
+          return { ...row, userId };
+        }
+        return row;
+      });
+      if (changed) this._saveTable(table, nextRows);
+    }
+  }
+
   // Ensure mock users have password field (migration helper)
   _ensureUsersHavePasswords() {
     const users = this._getTable('mock_users');
@@ -149,6 +181,7 @@ class APIClient {
           if (user.isActive === 0) {
             return { success: false, message: 'Account is deactivated' };
           }
+          this._claimUnownedData(user.id);
           return { success: true, user: { id: user.id, username: user.username, role: user.role, name: user.name, email: user.email, isActive: user.isActive } };
         } else {
           console.log(`[FALLBACK] password mismatch. stored='${user.password}', provided='${password}'`);
@@ -167,6 +200,7 @@ class APIClient {
         return { success: false, message: 'Account is deactivated' };
       }
       if (user) {
+        this._claimUnownedData(user.id);
         return { success: true, user: { id: user.id, username: user.username, role: user.role, name: user.name, email: user.email, isActive: user.isActive } };
       }
       return { success: false };
@@ -281,11 +315,12 @@ class APIClient {
     // ── DOCTOR ────────────────────────────────────────────────────────────────
     if (moduleName === 'doctor') {
       const doctors = this._getTable('mock_doctors');
+      const userDoctors = this._forCurrentUser(doctors);
       const todayStr = new Date().toISOString().split('T')[0];
-      if (methodName === 'getAll') return [...doctors].sort((a, b) => a.name.localeCompare(b.name));
+      if (methodName === 'getAll') return [...userDoctors].sort((a, b) => a.name.localeCompare(b.name));
       if (methodName === 'getById') {
         const [id] = args;
-        return doctors.find(d => d.id === id) || null;
+        return userDoctors.find(d => d.id === id) || null;
       }
       if (methodName === 'add') {
         const [data] = args;
@@ -293,7 +328,7 @@ class APIClient {
           return { success: false, message: 'Backdated doctor entry is not allowed.' };
         }
         const id = Date.now().toString();
-        doctors.push({ ...data, doctorDate: data.doctorDate || data.date || todayStr, id, createdAt: new Date().toISOString() });
+        doctors.push(this._withCurrentUser({ ...data, doctorDate: data.doctorDate || data.date || todayStr, id, createdAt: new Date().toISOString() }));
         this._saveTable('mock_doctors', doctors);
         return { success: true, id };
       }
@@ -302,29 +337,32 @@ class APIClient {
         if ((data.doctorDate || data.date) && (data.doctorDate || data.date) < todayStr) {
           return { success: false, message: 'Backdated doctor entry is not allowed.' };
         }
-        const updated = doctors.map(d => d.id === id ? { ...d, ...data, doctorDate: data.doctorDate || data.date || d.doctorDate || todayStr, updatedAt: new Date().toISOString() } : d);
+        const userId = this._getCurrentUserId();
+        const updated = doctors.map(d => d.id === id && d.userId === userId ? { ...d, ...data, doctorDate: data.doctorDate || data.date || d.doctorDate || todayStr, updatedAt: new Date().toISOString() } : d);
         this._saveTable('mock_doctors', updated);
         return { success: true };
       }
       if (methodName === 'delete') {
         const [id] = args;
-        this._saveTable('mock_doctors', doctors.filter(d => d.id !== id));
+        const userId = this._getCurrentUserId();
+        this._saveTable('mock_doctors', doctors.filter(d => !(d.id === id && d.userId === userId)));
         return { success: true };
       }
       if (methodName === 'getReferralCount') {
         const [id] = args;
-        return this._getTable('mock_referrals').filter(r => r.doctorId === id).length;
+        return this._forCurrentUser(this._getTable('mock_referrals')).filter(r => r.doctorId === id).length;
       }
     }
 
     // ── PATIENT ───────────────────────────────────────────────────────────────
     if (moduleName === 'patient') {
       const patients = this._getTable('mock_patients');
+      const userPatients = this._forCurrentUser(patients);
       const todayStr = new Date().toISOString().split('T')[0];
-      if (methodName === 'getAll') return [...patients].sort((a, b) => a.name.localeCompare(b.name));
+      if (methodName === 'getAll') return [...userPatients].sort((a, b) => a.name.localeCompare(b.name));
       if (methodName === 'getById') {
         const [id] = args;
-        return patients.find(p => p.id === id) || null;
+        return userPatients.find(p => p.id === id) || null;
       }
       if (methodName === 'add') {
         const [data] = args;
@@ -332,7 +370,7 @@ class APIClient {
           return { success: false, message: 'Backdated patient entry is not allowed.' };
         }
         const id = Date.now().toString();
-        patients.push({ ...data, visitDate: data.visitDate || data.date || todayStr, id, createdAt: new Date().toISOString() });
+        patients.push(this._withCurrentUser({ ...data, visitDate: data.visitDate || data.date || todayStr, id, createdAt: new Date().toISOString() }));
         this._saveTable('mock_patients', patients);
         return { success: true, id };
       }
@@ -341,7 +379,8 @@ class APIClient {
         if ((data.visitDate || data.date) && (data.visitDate || data.date) < todayStr) {
           return { success: false, message: 'Backdated patient entry is not allowed.' };
         }
-        const updated = patients.map(p => p.id === id ? { ...p, ...data, visitDate: data.visitDate || data.date || p.visitDate || todayStr, updatedAt: new Date().toISOString() } : p);
+        const userId = this._getCurrentUserId();
+        const updated = patients.map(p => p.id === id && p.userId === userId ? { ...p, ...data, visitDate: data.visitDate || data.date || p.visitDate || todayStr, updatedAt: new Date().toISOString() } : p);
         this._saveTable('mock_patients', updated);
         return { success: true };
       }
@@ -358,8 +397,8 @@ class APIClient {
       }
       if (methodName === 'getVisitHistory') {
         const [patientId] = args;
-        const referrals = this._getTable('mock_referrals');
-        const doctors   = this._getTable('mock_doctors');
+        const referrals = this._forCurrentUser(this._getTable('mock_referrals'));
+        const doctors   = this._forCurrentUser(this._getTable('mock_doctors'));
         return referrals
           .filter(r => r.patientId === patientId)
           .map(r => {
@@ -373,8 +412,9 @@ class APIClient {
     // ── REFERRAL ──────────────────────────────────────────────────────────────
     if (moduleName === 'referral') {
       const referrals = this._getTable('mock_referrals');
-      const doctors   = this._getTable('mock_doctors');
-      const patients  = this._getTable('mock_patients');
+      const userReferrals = this._forCurrentUser(referrals);
+      const doctors   = this._forCurrentUser(this._getTable('mock_doctors'));
+      const patients  = this._forCurrentUser(this._getTable('mock_patients'));
       const todayStr = new Date().toISOString().split('T')[0];
 
       const enrich = r => {
@@ -384,25 +424,26 @@ class APIClient {
       };
 
       if (methodName === 'getAll') {
-        return referrals.map(enrich).sort((a, b) => new Date(b.referralDate) - new Date(a.referralDate));
+        return userReferrals.map(enrich).sort((a, b) => new Date(b.referralDate) - new Date(a.referralDate));
       }
       if (methodName === 'add') {
         const [data] = args;
         const referralDate = data.referralDate || todayStr;
         if (referralDate < todayStr) return { success: false, message: 'Referral date cannot be in the past.' };
         const id = Date.now().toString();
-        const newRef = { ...data, id, serviceType: data.serviceType || data.test || '', referralDate, status: data.status || 'pending', createdAt: new Date().toISOString() };
+        const newRef = this._withCurrentUser({ ...data, id, serviceType: data.serviceType || data.test || '', referralDate, status: data.status || 'pending', createdAt: new Date().toISOString() });
         referrals.push(newRef);
         this._saveTable('mock_referrals', referrals);
         return { success: true, id };
       }
       if (methodName === 'update') {
         const [id, data] = args;
-        const existing = referrals.find(r => r.id === id);
+        const userId = this._getCurrentUserId();
+        const existing = referrals.find(r => r.id === id && r.userId === userId);
         if (!existing) return { success: false, message: 'Referral not found.' };
         const referralDate = data.referralDate || existing.referralDate || todayStr;
         if (referralDate < todayStr) return { success: false, message: 'Referral date cannot be in the past.' };
-        const updated = referrals.map(r => r.id === id ? {
+        const updated = referrals.map(r => r.id === id && r.userId === userId ? {
           ...r,
           ...data,
           serviceType: data.serviceType || data.test || r.serviceType,
@@ -414,7 +455,8 @@ class APIClient {
       }
       if (methodName === 'delete') {
         const [id] = args;
-        this._saveTable('mock_referrals', referrals.filter(r => r.id !== id));
+        const userId = this._getCurrentUserId();
+        this._saveTable('mock_referrals', referrals.filter(r => !(r.id === id && r.userId === userId)));
         return { success: true };
       }
       if (methodName === 'getByPatient') {
@@ -425,7 +467,7 @@ class APIClient {
         const [doctorId, days = 7] = args;
         const cutoff = new Date();
         cutoff.setDate(cutoff.getDate() - days);
-        return referrals
+        return userReferrals
           .filter(r => r.doctorId === doctorId && new Date(r.referralDate) >= cutoff)
           .map(enrich)
           .sort((a, b) => new Date(b.referralDate) - new Date(a.referralDate));
@@ -434,10 +476,10 @@ class APIClient {
 
     // ── DASHBOARD ─────────────────────────────────────────────────────────────
     if (moduleName === 'dashboard') {
-      const doctors   = this._getTable('mock_doctors');
-      const patients  = this._getTable('mock_patients');
-      const referrals = this._getTable('mock_referrals');
-      const bills     = this._getTable('mock_bills');
+      const doctors   = this._forCurrentUser(this._getTable('mock_doctors'));
+      const patients  = this._forCurrentUser(this._getTable('mock_patients'));
+      const referrals = this._forCurrentUser(this._getTable('mock_referrals'));
+      const bills     = this._forCurrentUser(this._getTable('mock_bills'));
 
       if (methodName === 'getStats') {
         const d = new Date();
@@ -485,8 +527,9 @@ class APIClient {
     // ── BILL ──────────────────────────────────────────────────────────────────
     if (moduleName === 'bill') {
       const bills    = this._getTable('mock_bills');
-      const patients = this._getTable('mock_patients');
-      const doctors  = this._getTable('mock_doctors');
+      const userBills = this._forCurrentUser(bills);
+      const patients = this._forCurrentUser(this._getTable('mock_patients'));
+      const doctors  = this._forCurrentUser(this._getTable('mock_doctors'));
       const todayStr = new Date().toISOString().split('T')[0];
 
       const enrichBill = b => {
@@ -496,7 +539,7 @@ class APIClient {
       };
 
       if (methodName === 'getAll') {
-        return bills.map(enrichBill).sort((a, b) => new Date(b.billDate) - new Date(a.billDate));
+        return userBills.map(enrichBill).sort((a, b) => new Date(b.billDate) - new Date(a.billDate));
       }
       if (methodName === 'add') {
         const [data] = args;
@@ -516,10 +559,10 @@ class APIClient {
         const status = requestedPaidAmount >= finalAmount ? 'Paid' : 'Pending';
         const paidAmount = requestedPaidAmount;
         const dueAmount = Math.max(0, finalAmount - paidAmount);
-        const newBill = {
+        const newBill = this._withCurrentUser({
           ...data,
           id,
-          billNo: data.billNo || `BILL-${String(bills.length + 1).padStart(5, '0')}`,
+          billNo: data.billNo || `BILL-${String(userBills.length + 1).padStart(5, '0')}`,
           amount,
           subtotal: amount,
           finalAmount,
@@ -531,7 +574,7 @@ class APIClient {
           checkNo: data.paymentMode === 'Cheque' ? String(data.checkNo || '').trim() : '',
           billDate,
           createdAt: new Date().toISOString()
-        };
+        });
         bills.push(newBill);
         this._saveTable('mock_bills', bills);
 
@@ -553,7 +596,8 @@ class APIClient {
       }
       if (methodName === 'update') {
         const [id, data] = args;
-        const existing = bills.find(b => b.id === id);
+        const userId = this._getCurrentUserId();
+        const existing = bills.find(b => b.id === id && b.userId === userId);
         if (!existing) return { success: false, message: 'Bill not found.' };
         if (['Paid', 'completed'].includes(existing.status || existing.paymentStatus)) {
           return { success: false, message: 'Paid bills cannot be edited.' };
@@ -576,7 +620,7 @@ class APIClient {
         const status = requestedPaidAmount >= finalAmount ? 'Paid' : 'Pending';
         const paidAmount = requestedPaidAmount;
         const dueAmount = Math.max(0, finalAmount - paidAmount);
-        const updated = bills.map(b => b.id === id ? {
+        const updated = bills.map(b => b.id === id && b.userId === userId ? {
           ...b,
           ...data,
           amount,
@@ -599,12 +643,12 @@ class APIClient {
       }
       if (methodName === 'getById') {
         const [id] = args;
-        const bill = bills.find(b => b.id === id);
+        const bill = userBills.find(b => b.id === id);
         return bill ? enrichBill(bill) : null;
       }
       if (methodName === 'getByPatient') {
         const [patientId] = args;
-        return bills
+        return userBills
           .filter(b => b.patientId === patientId)
           .map(enrichBill)
           .sort((a, b) => new Date(b.billDate) - new Date(a.billDate));
@@ -622,9 +666,12 @@ class APIClient {
       const returns  = this._getTable('mock_returns');
       const products = this._getTable('mock_products');
       const bills     = this._getTable('mock_bills');
+      const userBills = this._forCurrentUser(bills);
+      const userBillIds = userBills.map(b => b.id);
 
       if (methodName === 'getByBill') {
         const [billId] = args;
+        if (!userBillIds.includes(billId)) return [];
         return returns
           .filter(r => r.billId === billId)
           .map(r => {
@@ -641,6 +688,7 @@ class APIClient {
 
       if (methodName === 'add') {
         const [data] = args;
+        if (!userBillIds.includes(data.billId)) return { success: false, message: 'Bill not found.' };
         const id = Date.now().toString();
         const newReturn = { ...data, id, createdAt: new Date().toISOString() };
         returns.push(newReturn);
@@ -683,9 +731,9 @@ class APIClient {
 
     // ── REPORT ────────────────────────────────────────────────────────────────
     if (moduleName === 'report') {
-      const doctors   = this._getTable('mock_doctors');
-      const referrals = this._getTable('mock_referrals');
-      const bills     = this._getTable('mock_bills');
+      const doctors   = this._forCurrentUser(this._getTable('mock_doctors'));
+      const referrals = this._forCurrentUser(this._getTable('mock_referrals'));
+      const bills     = this._forCurrentUser(this._getTable('mock_bills'));
 
       if (methodName === 'getDoctorWise') {
         const [days = 7] = args;
@@ -729,7 +777,7 @@ class APIClient {
 
       if (methodName === 'getReferralPayment') {
         const [days = 7] = args;
-        const patients = this._getTable('mock_patients');
+        const patients = this._forCurrentUser(this._getTable('mock_patients'));
         const rangeDays = Math.max(1, Number(days) || 1);
         const cutoff = new Date();
         cutoff.setHours(0, 0, 0, 0);

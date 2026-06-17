@@ -73,6 +73,7 @@ class DatabaseManager {
         pincode TEXT,
         specialization TEXT,
         email TEXT,
+        userId TEXT,
         createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
         updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
       )
@@ -91,6 +92,7 @@ class DatabaseManager {
         state TEXT,
         pincode TEXT,
         email TEXT,
+        userId TEXT,
         createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
         updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
       )
@@ -106,6 +108,7 @@ class DatabaseManager {
         notes TEXT,
         referralDate DATETIME DEFAULT CURRENT_TIMESTAMP,
         status TEXT DEFAULT 'pending',
+        userId TEXT,
         createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (doctorId) REFERENCES doctors(id),
         FOREIGN KEY (patientId) REFERENCES patients(id)
@@ -124,6 +127,7 @@ class DatabaseManager {
         paymentMode TEXT,
         paymentStatus TEXT DEFAULT 'pending',
         notes TEXT,
+        userId TEXT,
         createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
         updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (patientId) REFERENCES patients(id)
@@ -224,6 +228,13 @@ class DatabaseManager {
     } catch (e) {
       // Column may already exist
     }
+    for (const table of ['doctors', 'patients', 'referrals', 'bills']) {
+      try {
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN userId TEXT`);
+      } catch (e) {
+        // Column may already exist
+      }
+    }
     try {
       this.db.exec(`ALTER TABLE billItems ADD COLUMN itemType TEXT DEFAULT 'service'`);
     } catch (e) {
@@ -307,6 +318,10 @@ class DatabaseManager {
       for (const user of allUsers) {
         const normalizedRole = normalizeRole(user.role);
         if (user.role !== normalizedRole) updateRole.run(normalizedRole, user.id);
+      }
+
+      for (const table of ['doctors', 'patients', 'referrals', 'bills']) {
+        this.db.prepare(`UPDATE ${table} SET userId = ? WHERE userId IS NULL OR userId = ''`).run('user-1');
       }
 
       const defaultSettings = {
@@ -492,15 +507,15 @@ class DatabaseManager {
   }
 
   // ===================== DOCTOR METHODS =====================
-  getAllDoctors() {
-    return this.db.prepare('SELECT * FROM doctors ORDER BY name').all();
+  getAllDoctors(userId) {
+    return this.db.prepare('SELECT * FROM doctors WHERE userId = ? ORDER BY name').all(userId);
   }
 
-  getDoctorById(id) {
-    return this.db.prepare('SELECT * FROM doctors WHERE id = ?').get(id);
+  getDoctorById(id, userId) {
+    return this.db.prepare('SELECT * FROM doctors WHERE id = ? AND userId = ?').get(id, userId);
   }
 
-  addDoctor(data) {
+  addDoctor(data, userId) {
     const { v4: uuidv4 } = require('uuid');
     const id = uuidv4();
     try {
@@ -508,8 +523,8 @@ class DatabaseManager {
         return { success: false, message: 'Backdated doctor entry is not allowed.' };
       }
       this.db.prepare(`
-        INSERT INTO doctors (id, name, mobile, address, city, state, pincode, specialization, email, clinic, doctorDate, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO doctors (id, name, mobile, address, city, state, pincode, specialization, email, clinic, doctorDate, notes, userId)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         id,
         data.name || data.doctorName,
@@ -522,7 +537,8 @@ class DatabaseManager {
         data.email || '',
         data.clinic || '',
         data.doctorDate || data.date || getTodayString(),
-        data.notes || ''
+        data.notes || '',
+        userId
       );
       return { success: true, id };
     } catch (error) {
@@ -530,7 +546,7 @@ class DatabaseManager {
     }
   }
 
-  updateDoctor(id, data) {
+  updateDoctor(id, data, userId) {
     try {
       if (isBackdated(data.doctorDate || data.date)) {
         return { success: false, message: 'Backdated doctor entry is not allowed.' };
@@ -539,7 +555,7 @@ class DatabaseManager {
         UPDATE doctors 
         SET name = ?, mobile = ?, address = ?, city = ?, state = ?, pincode = ?, specialization = ?, email = ?, 
             clinic = ?, doctorDate = ?, notes = ?, updatedAt = CURRENT_TIMESTAMP
-        WHERE id = ?
+        WHERE id = ? AND userId = ?
       `).run(
         data.name || data.doctorName,
         data.mobile,
@@ -552,7 +568,8 @@ class DatabaseManager {
         data.clinic || '',
         data.doctorDate || data.date || getTodayString(),
         data.notes || '',
-        id
+        id,
+        userId
       );
       return { success: true };
     } catch (error) {
@@ -560,30 +577,30 @@ class DatabaseManager {
     }
   }
 
-  deleteDoctor(id) {
+  deleteDoctor(id, userId) {
     try {
-      this.db.prepare('DELETE FROM doctors WHERE id = ?').run(id);
+      this.db.prepare('DELETE FROM doctors WHERE id = ? AND userId = ?').run(id, userId);
       return { success: true };
     } catch (error) {
       return { success: false, message: error.message };
     }
   }
 
-  getDoctorReferralCount(id) {
-    const result = this.db.prepare('SELECT COUNT(*) as count FROM referrals WHERE doctorId = ?').get(id);
+  getDoctorReferralCount(id, userId) {
+    const result = this.db.prepare('SELECT COUNT(*) as count FROM referrals WHERE doctorId = ? AND userId = ?').get(id, userId);
     return result.count;
   }
 
   // ===================== PATIENT METHODS =====================
-  getAllPatients() {
-    return this.db.prepare('SELECT * FROM patients ORDER BY name').all();
+  getAllPatients(userId) {
+    return this.db.prepare('SELECT * FROM patients WHERE userId = ? ORDER BY name').all(userId);
   }
 
-  getPatientById(id) {
-    return this.db.prepare('SELECT * FROM patients WHERE id = ?').get(id);
+  getPatientById(id, userId) {
+    return this.db.prepare('SELECT * FROM patients WHERE id = ? AND userId = ?').get(id, userId);
   }
 
-  addPatient(data) {
+  addPatient(data, userId) {
     const { v4: uuidv4 } = require('uuid');
     const id = uuidv4();
     try {
@@ -593,8 +610,8 @@ class DatabaseManager {
       }
 
       this.db.prepare(`
-        INSERT INTO patients (id, name, mobile, age, gender, address, city, state, pincode, email, visitDate, test, notes, createdAt, updatedAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        INSERT INTO patients (id, name, mobile, age, gender, address, city, state, pincode, email, visitDate, test, notes, userId, createdAt, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       `).run(
         id, 
         data.name, 
@@ -608,7 +625,8 @@ class DatabaseManager {
         data.email || '', 
         visitDate,
         data.test || '',
-        data.notes || ''
+        data.notes || '',
+        userId
       );
       return { success: true, id };
     } catch (error) {
@@ -616,7 +634,7 @@ class DatabaseManager {
     }
   }
 
-  updatePatient(id, data) {
+  updatePatient(id, data, userId) {
     try {
       const visitDate = data.visitDate || data.date || getTodayString();
       if (isBackdated(visitDate)) {
@@ -627,7 +645,7 @@ class DatabaseManager {
         UPDATE patients 
         SET name = ?, mobile = ?, age = ?, gender = ?, address = ?, city = ?, state = ?, pincode = ?, email = ?, 
             visitDate = ?, test = ?, notes = ?, updatedAt = CURRENT_TIMESTAMP
-        WHERE id = ?
+        WHERE id = ? AND userId = ?
       `).run(
         data.name, 
         data.mobile, 
@@ -641,7 +659,8 @@ class DatabaseManager {
         visitDate,
         data.test || '',
         data.notes || '',
-        id
+        id,
+        userId
       );
       return { success: true };
     } catch (error) {
@@ -676,7 +695,7 @@ class DatabaseManager {
     }
   }
 
-  getPatientVisitHistory(patientId) {
+  getPatientVisitHistory(patientId, userId) {
     return this.db.prepare(`
       SELECT 
         r.id,
@@ -687,13 +706,13 @@ class DatabaseManager {
         r.status
       FROM referrals r
       LEFT JOIN doctors d ON r.doctorId = d.id
-      WHERE r.patientId = ?
+      WHERE r.patientId = ? AND r.userId = ?
       ORDER BY r.referralDate DESC
-    `).all(patientId);
+    `).all(patientId, userId);
   }
 
   // ===================== REFERRAL METHODS =====================
-  getAllReferrals() {
+  getAllReferrals(userId) {
     return this.db.prepare(`
       SELECT 
         r.*,
@@ -702,11 +721,12 @@ class DatabaseManager {
       FROM referrals r
       LEFT JOIN doctors d ON r.doctorId = d.id
       LEFT JOIN patients p ON r.patientId = p.id
+      WHERE r.userId = ?
       ORDER BY r.referralDate DESC
-    `).all();
+    `).all(userId);
   }
 
-  addReferral(data) {
+  addReferral(data, userId) {
     const { v4: uuidv4 } = require('uuid');
     const id = uuidv4();
     try {
@@ -720,9 +740,9 @@ class DatabaseManager {
       }
 
       this.db.prepare(`
-        INSERT INTO referrals (id, doctorId, patientId, serviceType, notes, referralDate, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(id, data.doctorId, data.patientId, data.serviceType, data.notes, referralDate, 'pending');
+        INSERT INTO referrals (id, doctorId, patientId, serviceType, notes, referralDate, status, userId)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(id, data.doctorId, data.patientId, data.serviceType, data.notes, referralDate, 'pending', userId);
       
       return { success: true, id };
     } catch (error) {
@@ -730,9 +750,9 @@ class DatabaseManager {
     }
   }
 
-  updateReferral(id, data) {
+  updateReferral(id, data, userId) {
     try {
-      const existing = this.db.prepare('SELECT * FROM referrals WHERE id = ?').get(id);
+      const existing = this.db.prepare('SELECT * FROM referrals WHERE id = ? AND userId = ?').get(id, userId);
       if (!existing) return { success: false, message: 'Referral not found.' };
 
       const referralDate = data.referralDate || existing.referralDate || getTodayString();
@@ -743,7 +763,7 @@ class DatabaseManager {
       this.db.prepare(`
         UPDATE referrals 
         SET doctorId = ?, patientId = ?, serviceType = ?, notes = ?, referralDate = ?, status = ?
-        WHERE id = ?
+        WHERE id = ? AND userId = ?
       `).run(
         data.doctorId || existing.doctorId,
         data.patientId || existing.patientId,
@@ -751,7 +771,8 @@ class DatabaseManager {
         data.hasOwnProperty('notes') ? data.notes : existing.notes,
         referralDate,
         data.status || existing.status || 'pending',
-        id
+        id,
+        userId
       );
       return { success: true };
     } catch (error) {
@@ -759,11 +780,11 @@ class DatabaseManager {
     }
   }
 
-  getReferralsByPatient(patientId) {
-    return this.getPatientVisitHistory(patientId);
+  getReferralsByPatient(patientId, userId) {
+    return this.getPatientVisitHistory(patientId, userId);
   }
 
-  getRecentReferralsByDoctor(doctorId, days = 7) {
+  getRecentReferralsByDoctor(doctorId, days = 7, userId) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
     
@@ -773,14 +794,14 @@ class DatabaseManager {
         p.name as patientName
       FROM referrals r
       LEFT JOIN patients p ON r.patientId = p.id
-      WHERE r.doctorId = ? AND r.referralDate >= ?
+      WHERE r.doctorId = ? AND r.referralDate >= ? AND r.userId = ?
       ORDER BY r.referralDate DESC
-    `).all(doctorId, startDate.toISOString().split('T')[0]);
+    `).all(doctorId, startDate.toISOString().split('T')[0], userId);
   }
 
-  deleteReferral(id) {
+  deleteReferral(id, userId) {
     try {
-      this.db.prepare('DELETE FROM referrals WHERE id = ?').run(id);
+      this.db.prepare('DELETE FROM referrals WHERE id = ? AND userId = ?').run(id, userId);
       return { success: true };
     } catch (error) {
       return { success: false, message: error.message };
@@ -788,25 +809,25 @@ class DatabaseManager {
   }
 
   // ===================== DASHBOARD METHODS =====================
-  getDashboardStats() {
-    const totalDoctors = this.db.prepare('SELECT COUNT(*) as count FROM doctors').get().count;
-    const totalPatients = this.db.prepare('SELECT COUNT(*) as count FROM patients').get().count;
+  getDashboardStats(userId) {
+    const totalDoctors = this.db.prepare('SELECT COUNT(*) as count FROM doctors WHERE userId = ?').get(userId).count;
+    const totalPatients = this.db.prepare('SELECT COUNT(*) as count FROM patients WHERE userId = ?').get(userId).count;
     
     const today = getTodayString();
     const todayReferralVisits = this.db.prepare(
-      'SELECT COUNT(*) as count FROM referrals WHERE DATE(referralDate) = ?'
-    ).get(today).count;
+      'SELECT COUNT(*) as count FROM referrals WHERE DATE(referralDate) = ? AND userId = ?'
+    ).get(today, userId).count;
     const todayPatientVisits = this.db.prepare(
-      'SELECT COUNT(*) as count FROM patients WHERE DATE(visitDate) = ?'
-    ).get(today).count;
+      'SELECT COUNT(*) as count FROM patients WHERE DATE(visitDate) = ? AND userId = ?'
+    ).get(today, userId).count;
     const pendingCount = this.db.prepare(
-      "SELECT COUNT(*) as count FROM referrals WHERE status = 'pending'"
-    ).get().count;
+      "SELECT COUNT(*) as count FROM referrals WHERE status = 'pending' AND userId = ?"
+    ).get(userId).count;
 
     const todayRevenue = this.db.prepare(`
       SELECT COALESCE(SUM(CASE WHEN finalAmount IS NOT NULL AND finalAmount > 0 THEN finalAmount ELSE total END), 0) as total FROM bills 
-      WHERE DATE(billDate) = ? AND (paymentStatus IN ('completed', 'Paid') OR status = 'Paid')
-    `).get(today).total;
+      WHERE DATE(billDate) = ? AND userId = ? AND (paymentStatus IN ('completed', 'Paid') OR status = 'Paid')
+    `).get(today, userId).total;
 
     return {
       totalDoctors,
@@ -817,7 +838,7 @@ class DatabaseManager {
     };
   }
 
-  getRecentReferrals(limit = 10) {
+  getRecentReferrals(limit = 10, userId) {
     return this.db.prepare(`
       SELECT 
         r.*,
@@ -826,12 +847,13 @@ class DatabaseManager {
       FROM referrals r
       LEFT JOIN doctors d ON r.doctorId = d.id
       LEFT JOIN patients p ON r.patientId = p.id
+      WHERE r.userId = ?
       ORDER BY r.referralDate DESC
       LIMIT ?
-    `).all(limit);
+    `).all(userId, limit);
   }
 
-  getTopDoctors(days = 7) {
+  getTopDoctors(days = 7, userId) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
@@ -842,15 +864,16 @@ class DatabaseManager {
         COUNT(r.id) as referralCount,
         GROUP_CONCAT(DISTINCT r.serviceType) as serviceTypes
       FROM doctors d
-      LEFT JOIN referrals r ON d.id = r.doctorId AND r.referralDate >= ?
+      LEFT JOIN referrals r ON d.id = r.doctorId AND r.referralDate >= ? AND r.userId = ?
+      WHERE d.userId = ?
       GROUP BY d.id
       ORDER BY referralCount DESC
       LIMIT 5
-    `).all(startDate.toISOString().split('T')[0]);
+    `).all(startDate.toISOString().split('T')[0], userId, userId);
   }
 
   // ===================== BILLING METHODS =====================
-  getAllBills() {
+  getAllBills(userId) {
     return this.db.prepare(`
       SELECT 
         b.*,
@@ -859,11 +882,12 @@ class DatabaseManager {
       FROM bills b
       LEFT JOIN patients p ON b.patientId = p.id
       LEFT JOIN doctors d ON b.referralDoctorId = d.id
+      WHERE b.userId = ?
       ORDER BY b.billDate DESC
-    `).all();
+    `).all(userId);
   }
 
-  addBill(data) {
+  addBill(data, userId) {
     const { v4: uuidv4 } = require('uuid');
     const billId = uuidv4();
     try {
@@ -891,15 +915,15 @@ class DatabaseManager {
       if (data.paymentMode === 'Cheque' && !String(data.checkNo || '').trim()) {
         return { success: false, message: 'Check No is required for cheque payments.' };
       }
-      const billCount = this.db.prepare('SELECT COUNT(*) as count FROM bills').get().count + 1;
+      const billCount = this.db.prepare('SELECT COUNT(*) as count FROM bills WHERE userId = ?').get(userId).count + 1;
       const billNo = data.billNo || `BILL-${String(billCount).padStart(5, '0')}`;
 
       this.db.prepare(`
         INSERT INTO bills (
           id, billNo, patientId, referralDoctorId, referralId, test, amount, subtotal, discount,
-          finalAmount, total, paidAmount, dueAmount, paymentMode, checkNo, paymentStatus, status, billDate, notes
+          finalAmount, total, paidAmount, dueAmount, paymentMode, checkNo, paymentStatus, status, billDate, notes, userId
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         billId,
         billNo,
@@ -919,7 +943,8 @@ class DatabaseManager {
         status,
         status,
         billDate,
-        data.notes || ''
+        data.notes || '',
+        userId
       );
 
       // Add bill items
@@ -992,14 +1017,14 @@ class DatabaseManager {
     }
   }
 
-  getBillById(id) {
+  getBillById(id, userId) {
     const bill = this.db.prepare(`
       SELECT b.*, p.name as patientName, d.name as referralDoctorName
       FROM bills b
       LEFT JOIN patients p ON b.patientId = p.id
       LEFT JOIN doctors d ON b.referralDoctorId = d.id
-      WHERE b.id = ?
-    `).get(id);
+      WHERE b.id = ? AND b.userId = ?
+    `).get(id, userId);
     if (bill) {
       const items = this.db.prepare('SELECT * FROM billItems WHERE billId = ?').all(id);
       bill.items = items;
@@ -1007,7 +1032,7 @@ class DatabaseManager {
     return bill;
   }
 
-  getBillsByPatient(patientId) {
+  getBillsByPatient(patientId, userId) {
     return this.db.prepare(`
       SELECT 
         b.*,
@@ -1016,9 +1041,9 @@ class DatabaseManager {
       FROM bills b
       LEFT JOIN patients p ON b.patientId = p.id
       LEFT JOIN doctors d ON b.referralDoctorId = d.id
-      WHERE b.patientId = ?
+      WHERE b.patientId = ? AND b.userId = ?
       ORDER BY b.billDate DESC
-    `).all(patientId);
+    `).all(patientId, userId);
   }
 
   deleteBill(id) {
@@ -1031,22 +1056,26 @@ class DatabaseManager {
   }
 
   // ===================== RETURN/EXCHANGE METHODS =====================
-  getReturnsByBillId(billId) {
+  getReturnsByBillId(billId, userId) {
     return this.db.prepare(`
       SELECT r.*, p.name as productName, ep.name as exchangeProductName
       FROM returns r
+      INNER JOIN bills b ON r.billId = b.id
       LEFT JOIN products p ON r.itemId = p.id
       LEFT JOIN products ep ON r.exchangeItemId = ep.id
-      WHERE r.billId = ?
+      WHERE r.billId = ? AND b.userId = ?
       ORDER BY r.createdAt DESC
-    `).all(billId);
+    `).all(billId, userId);
   }
 
-  addReturn(data) {
+  addReturn(data, userId) {
     const { v4: uuidv4 } = require('uuid');
     const returnId = uuidv4();
     try {
       const transaction = this.db.transaction(() => {
+        const bill = this.db.prepare('SELECT id FROM bills WHERE id = ? AND userId = ?').get(data.billId, userId);
+        if (!bill) throw new Error('Bill not found.');
+
         // 1. Insert return log
         this.db.prepare(`
           INSERT INTO returns (id, billId, itemId, type, qty, refundAmount, exchangeItemId, exchangeQty, priceDifference)
@@ -1091,9 +1120,9 @@ class DatabaseManager {
     }
   }
 
-  updateBill(id, data) {
+  updateBill(id, data, userId) {
     try {
-      const existing = this.db.prepare('SELECT * FROM bills WHERE id = ?').get(id);
+      const existing = this.db.prepare('SELECT * FROM bills WHERE id = ? AND userId = ?').get(id, userId);
       if (!existing) return { success: false, message: 'Bill not found.' };
       const existingStatus = existing.status || existing.paymentStatus;
       if (existingStatus === 'Paid' || existingStatus === 'completed') {
@@ -1138,7 +1167,7 @@ class DatabaseManager {
         SET patientId = ?, referralDoctorId = ?, referralId = ?, test = ?, amount = ?, subtotal = ?,
             discount = ?, finalAmount = ?, total = ?, paidAmount = ?, dueAmount = ?, paymentMode = ?, checkNo = ?,
             paymentStatus = ?, status = ?, billDate = ?, notes = ?, updatedAt = CURRENT_TIMESTAMP
-        WHERE id = ?
+        WHERE id = ? AND userId = ?
       `).run(
         data.patientId || existing.patientId,
         data.referralDoctorId || data.doctorId || existing.referralDoctorId,
@@ -1157,7 +1186,8 @@ class DatabaseManager {
         status,
         billDate,
         data.notes ?? existing.notes ?? '',
-        id
+        id,
+        userId
       );
       
       return { success: true };
@@ -1167,7 +1197,7 @@ class DatabaseManager {
   }
 
   // ===================== REPORT METHODS =====================
-  getDoctorWiseReport(days = 7) {
+  getDoctorWiseReport(days = 7, userId) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
@@ -1179,13 +1209,14 @@ class DatabaseManager {
         COUNT(DISTINCT r.patientId) as uniquePatients,
         GROUP_CONCAT(DISTINCT r.serviceType) as serviceTypes
       FROM doctors d
-      LEFT JOIN referrals r ON d.id = r.doctorId AND r.referralDate >= ?
+      LEFT JOIN referrals r ON d.id = r.doctorId AND r.referralDate >= ? AND r.userId = ?
+      WHERE d.userId = ?
       GROUP BY d.id, d.name
       ORDER BY referralCount DESC
-    `).all(startDate.toISOString().split('T')[0]);
+    `).all(startDate.toISOString().split('T')[0], userId, userId);
   }
 
-  getRevenueReport(days = 30) {
+  getRevenueReport(days = 30, userId) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
@@ -1195,26 +1226,27 @@ class DatabaseManager {
         COUNT(*) as billCount,
         COALESCE(SUM(CASE WHEN finalAmount IS NOT NULL AND finalAmount > 0 THEN finalAmount ELSE total END), 0) as totalAmount
       FROM bills
-      WHERE billDate >= ? AND (paymentStatus IN ('completed', 'Paid') OR status = 'Paid')
+      WHERE billDate >= ? AND userId = ? AND (paymentStatus IN ('completed', 'Paid') OR status = 'Paid')
       GROUP BY DATE(billDate)
       ORDER BY date ASC
-    `).all(startDate.toISOString().split('T')[0]);
+    `).all(startDate.toISOString().split('T')[0], userId);
 
     return dailyData;
   }
 
-  getServiceWiseReport() {
+  getServiceWiseReport(userId) {
     return this.db.prepare(`
       SELECT 
         serviceType,
         COUNT(*) as count
       FROM referrals
+      WHERE userId = ?
       GROUP BY serviceType
       ORDER BY count DESC
-    `).all();
+    `).all(userId);
   }
 
-  getReferralPaymentReport(days = 7) {
+  getReferralPaymentReport(days = 7, userId) {
     const rangeDays = Math.max(1, Number(days) || 1);
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - (rangeDays - 1));
@@ -1256,10 +1288,10 @@ class DatabaseManager {
       LEFT JOIN doctors d ON r.doctorId = d.id
       LEFT JOIN bills b ON b.referralId = r.id
         OR (b.referralId IS NULL AND b.patientId = r.patientId AND DATE(b.billDate) = DATE(r.referralDate))
-      WHERE DATE(r.referralDate) >= ?
+      WHERE DATE(r.referralDate) >= ? AND r.userId = ?
       GROUP BY r.id
       ORDER BY DATE(r.referralDate) DESC, p.name ASC
-    `).all(start);
+    `).all(start, userId);
   }
 
   // ===================== LICENSE METHODS =====================
