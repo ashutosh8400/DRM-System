@@ -53,7 +53,6 @@ export function AuthProvider({ children }) {
   }, [darkMode])
 
   const login = async (username, password) => {
-    setLoading(true)
     try {
       const result = await api.login(username, password)
       if (result.success && result.user) {
@@ -67,8 +66,6 @@ export function AuthProvider({ children }) {
     } catch (error) {
       console.error('[AuthContext] Login error', error)
       return { success: false, message: error.message || 'An error occurred during login' }
-    } finally {
-      setLoading(false)
     }
   }
 

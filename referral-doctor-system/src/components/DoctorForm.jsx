@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { Edit2, Trash2 } from 'lucide-react'
+import Toast from './Toast'
 
 export default function DoctorForm({ doctor, onSave, onCancel }) {
   const [formData, setFormData] = useState(
@@ -13,19 +14,26 @@ export default function DoctorForm({ doctor, onSave, onCancel }) {
       email: '',
     }
   )
+  const [toast, setToast] = useState('')
 
   const handleChange = (e) => {
     const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
+    const nextValue = name === 'mobile' ? value.replace(/\D/g, '').slice(0, 10) : value
+    setFormData(prev => ({ ...prev, [name]: nextValue }))
   }
 
   const handleSubmit = (e) => {
     e.preventDefault()
+    if (!/^\d{10}$/.test(String(formData.mobile || '').trim())) {
+      setToast('Mobile number must be exactly 10 digits')
+      return
+    }
     onSave(formData)
   }
 
   return (
     <div className="bg-white dark:bg-secondary rounded-lg shadow-lg p-6 max-w-2xl">
+      <Toast message={toast} onClose={() => setToast('')} />
       <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
         {doctor ? 'Edit Doctor' : 'Add New Doctor'}
       </h2>
@@ -54,6 +62,9 @@ export default function DoctorForm({ doctor, onSave, onCancel }) {
               name="mobile"
               value={formData.mobile}
               onChange={handleChange}
+              inputMode="numeric"
+              maxLength={10}
+              pattern="\d{10}"
               required
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-primary dark:border-gray-600 dark:text-white"
             />
