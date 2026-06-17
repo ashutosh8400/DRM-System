@@ -23,8 +23,7 @@ export default function BillingForm({ patients, doctors, bill, onSave, onCancel 
   const discount = Number(formData.discount) || 0
   const finalAmount = Math.max(0, amount - discount)
   const paidAmount = Math.min(finalAmount, Number(formData.paidAmount) || 0)
-  const dueAmount = Math.max(0, finalAmount - paidAmount)
-  const paymentStatus = dueAmount <= 0 ? 'Paid' : 'Pending'
+  const paymentStatus = paidAmount >= finalAmount ? 'Paid' : 'Pending'
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -94,7 +93,7 @@ export default function BillingForm({ patients, doctors, bill, onSave, onCancel 
       finalAmount,
       total: finalAmount,
       paidAmount,
-      dueAmount,
+      dueAmount: Math.max(0, finalAmount - paidAmount),
       paymentMode: formData.paymentMode,
       checkNo: formData.paymentMode === 'Cheque' ? formData.checkNo.trim() : '',
       status: paymentStatus,

@@ -2,12 +2,31 @@ import React, { useState } from 'react'
 import { Edit2, Trash2 } from 'lucide-react'
 import Toast from './Toast'
 
+const SPECIALIZATION_OPTIONS = [
+  'General',
+  'X-Ray',
+  'Cardiology',
+  'Radiology',
+  'Pathology / Lab Test',
+  'Ultrasound',
+  'CT Scan',
+  'MRI',
+  'ECG',
+  'Orthopedics',
+  'Pediatrics',
+  'Dermatology',
+  'Gynecology',
+  'Neurology',
+  'ENT',
+  'Dental',
+]
+
 export default function DoctorForm({ doctor, onSave, onCancel }) {
   const [formData, setFormData] = useState(
     doctor || {
       name: '',
       mobile: '',
-      specialization: '',
+      specialization: 'General',
       city: '',
       state: '',
       address: '',
@@ -71,16 +90,18 @@ export default function DoctorForm({ doctor, onSave, onCancel }) {
           </div>
           <div>
             <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-              Specialization
+              Specialist In
             </label>
-            <input
-              type="text"
+            <select
               name="specialization"
-              value={formData.specialization}
+              value={formData.specialization || 'General'}
               onChange={handleChange}
-              placeholder="e.g., Cardiology"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-primary dark:border-gray-600 dark:text-white"
-            />
+            >
+              {SPECIALIZATION_OPTIONS.map(option => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">

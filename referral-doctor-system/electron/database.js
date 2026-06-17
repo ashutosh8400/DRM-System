@@ -668,10 +668,10 @@ class DatabaseManager {
     }
   }
 
-  deletePatient(id, userId) {
+  deletePatient(id) {
     try {
-      const deletePatientWithRelatedData = this.db.transaction((patientId, ownerId) => {
-        const bills = this.db.prepare('SELECT id FROM bills WHERE patientId = ? AND userId = ?').all(patientId, ownerId);
+      const deletePatientWithRelatedData = this.db.transaction((patientId) => {
+        const bills = this.db.prepare('SELECT id FROM bills WHERE patientId = ?').all(patientId);
         const billIds = bills.map((bill) => bill.id);
 
         for (const billId of billIds) {
@@ -679,13 +679,13 @@ class DatabaseManager {
           this.db.prepare('DELETE FROM billItems WHERE billId = ?').run(billId);
         }
 
-        this.db.prepare('DELETE FROM referrals WHERE patientId = ? AND userId = ?').run(patientId, ownerId);
-        this.db.prepare('DELETE FROM bills WHERE patientId = ? AND userId = ?').run(patientId, ownerId);
-        const result = this.db.prepare('DELETE FROM patients WHERE id = ? AND userId = ?').run(patientId, ownerId);
+        this.db.prepare('DELETE FROM bills WHERE patientId = ?').run(patientId);
+        this.db.prepare('DELETE FROM referrals WHERE patientId = ?').run(patientId);
+        const result = this.db.prepare('DELETE FROM patients WHERE id = ?').run(patientId);
         return result.changes;
       });
 
-      const changes = deletePatientWithRelatedData(id, userId);
+      const changes = deletePatientWithRelatedData(id);
       if (changes === 0) {
         return { success: false, message: 'Patient not found.' };
       }

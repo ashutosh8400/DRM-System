@@ -2,11 +2,30 @@ import React, { useMemo, useState } from 'react'
 import Toast from '../../components/Toast'
 
 const today = () => new Date().toISOString().slice(0, 10)
+const SPECIALIZATION_OPTIONS = [
+  'General',
+  'X-Ray',
+  'Cardiology',
+  'Radiology',
+  'Pathology / Lab Test',
+  'Ultrasound',
+  'CT Scan',
+  'MRI',
+  'ECG',
+  'Orthopedics',
+  'Pediatrics',
+  'Dermatology',
+  'Gynecology',
+  'Neurology',
+  'ENT',
+  'Dental',
+]
 
 export default function DoctorForm({ doctor, onSave, onCancel }) {
   const initialData = useMemo(() => ({
     name: '',
     mobile: '',
+    specialization: 'General',
     clinic: '',
     address: '',
     notes: '',
@@ -46,6 +65,7 @@ export default function DoctorForm({ doctor, onSave, onCancel }) {
     onSave({
       name: formData.name.trim(),
       mobile: formData.mobile.trim(),
+      specialization: formData.specialization,
       clinic: formData.clinic,
       address: formData.address,
       doctorDate: formData.doctorDate,
@@ -84,6 +104,20 @@ export default function DoctorForm({ doctor, onSave, onCancel }) {
               {errors[name] && <p className="text-red-500 text-xs mt-1 font-medium">{errors[name]}</p>}
             </div>
           ))}
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Specialist In</label>
+            <select
+              name="specialization"
+              value={formData.specialization || 'General'}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-primary dark:border-gray-600 dark:text-white"
+            >
+              {SPECIALIZATION_OPTIONS.map(option => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </div>
 
           <div>
             <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Date *</label>

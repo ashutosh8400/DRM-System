@@ -385,14 +385,13 @@ class APIClient {
       }
       if (methodName === 'delete') {
         const [id] = args;
-        const userId = this._getCurrentUserId();
         const bills = this._getTable('mock_bills');
-        const billIds = bills.filter(b => b.patientId === id && b.userId === userId).map(b => b.id);
+        const billIds = bills.filter(b => b.patientId === id).map(b => b.id);
         this._saveTable('mock_returns', this._getTable('mock_returns').filter(r => !billIds.includes(r.billId)));
         this._saveTable('mock_billItems', this._getTable('mock_billItems').filter(item => !billIds.includes(item.billId)));
-        this._saveTable('mock_bills', bills.filter(b => !(b.patientId === id && b.userId === userId)));
-        this._saveTable('mock_referrals', this._getTable('mock_referrals').filter(r => !(r.patientId === id && r.userId === userId)));
-        this._saveTable('mock_patients', patients.filter(p => !(p.id === id && p.userId === userId)));
+        this._saveTable('mock_bills', bills.filter(b => b.patientId !== id));
+        this._saveTable('mock_referrals', this._getTable('mock_referrals').filter(r => r.patientId !== id));
+        this._saveTable('mock_patients', patients.filter(p => p.id !== id));
         return { success: true };
       }
       if (methodName === 'getVisitHistory') {
@@ -559,7 +558,7 @@ class APIClient {
         const status = requestedPaidAmount >= finalAmount ? 'Paid' : 'Pending';
         const paidAmount = requestedPaidAmount;
         const dueAmount = Math.max(0, finalAmount - paidAmount);
-        const newBill = this._withCurrentUser({
+        const newBill = {
           ...data,
           id,
           billNo: data.billNo || `BILL-${String(userBills.length + 1).padStart(5, '0')}`,
@@ -574,7 +573,7 @@ class APIClient {
           checkNo: data.paymentMode === 'Cheque' ? String(data.checkNo || '').trim() : '',
           billDate,
           createdAt: new Date().toISOString()
-        });
+        };
         bills.push(newBill);
         this._saveTable('mock_bills', bills);
 
@@ -620,7 +619,7 @@ class APIClient {
         const status = requestedPaidAmount >= finalAmount ? 'Paid' : 'Pending';
         const paidAmount = requestedPaidAmount;
         const dueAmount = Math.max(0, finalAmount - paidAmount);
-        const updated = bills.map(b => b.id === id && b.userId === userId ? {
+        const updated = bills.map(b => b.id === id ? {
           ...b,
           ...data,
           amount,
