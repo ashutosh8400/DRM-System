@@ -65,11 +65,12 @@ export default function BillingPage({ user }) {
 
   const getDisplayAmounts = (bill) => {
     const status = bill.status || bill.paymentStatus || 'Pending'
-    const isPaid = ['Paid', 'completed'].includes(status)
     const amount = Number(bill.amount || bill.subtotal || 0)
     const discount = Number(bill.discount || 0)
     const finalAmount = Number(bill.finalAmount || bill.total || Math.max(0, amount - discount))
-    const paidAmount = isPaid ? finalAmount : Number(bill.paidAmount || 0)
+    const savedPaidAmount = Number(bill.paidAmount || 0)
+    const isPaid = ['Paid', 'completed'].includes(status) || savedPaidAmount >= finalAmount
+    const paidAmount = isPaid ? finalAmount : savedPaidAmount
     const dueAmount = isPaid ? 0 : Number(bill.dueAmount ?? Math.max(0, finalAmount - paidAmount))
     return { amount, discount, finalAmount, paidAmount, dueAmount, status, isPaid }
   }
@@ -104,10 +105,9 @@ export default function BillingPage({ user }) {
               <tr><th>Discount</th><td class="right">Rs. ${display.discount.toLocaleString()}</td></tr>
               <tr><th>Final Amount</th><td class="right">Rs. ${display.finalAmount.toLocaleString()}</td></tr>
               <tr><th>Paid Amount</th><td class="right">Rs. ${display.paidAmount.toLocaleString()}</td></tr>
-              <tr><th>Due Amount</th><td class="right">Rs. ${display.dueAmount.toLocaleString()}</td></tr>
               <tr><th>Payment Mode</th><td>${fullBill.paymentMode || ''}</td></tr>
               ${fullBill.paymentMode === 'Cheque' ? `<tr><th>Check No</th><td>${fullBill.checkNo || ''}</td></tr>` : ''}
-              <tr><th>Status</th><td>${fullBill.status || fullBill.paymentStatus || ''}</td></tr>
+              <tr><th>Status</th><td>${display.isPaid ? 'Paid' : 'Pending'}</td></tr>
             </tbody>
           </table>
         </body>
@@ -139,9 +139,9 @@ export default function BillingPage({ user }) {
 
   const canCreateBill = ['super_admin', 'admin', 'user'].includes(activeUser?.role)
   const totalRevenue = filteredBills
-    .filter(b => ['Paid', 'completed'].includes(b.status || b.paymentStatus))
-    .reduce((sum, b) => sum + Number(b.finalAmount || b.total || 0), 0)
-  const pendingCount = filteredBills.filter(b => (b.status || b.paymentStatus || 'Pending') === 'Pending').length
+    .filter(b => getDisplayAmounts(b).isPaid)
+    .reduce((sum, b) => sum + getDisplayAmounts(b).finalAmount, 0)
+  const pendingCount = filteredBills.filter(b => !getDisplayAmounts(b).isPaid).length
 
   if (loading) {
     return (
@@ -237,14 +237,14 @@ export default function BillingPage({ user }) {
           <table className="w-full">
             <thead>
               <tr className="bg-gray-100 dark:bg-primary border-b border-gray-200 dark:border-gray-700">
-                {['Bill No', 'Patient', 'Referral Doctor', 'Test', 'Date', 'Amount', 'Discount', 'Final', 'Paid', 'Mode', 'Status', 'Actions'].map(header => (
+                {['Bill No', 'Patient', 'Referral Doctor', 'Test', 'Date', 'Amount', 'Discount', 'Pending Amount', 'Paid', 'Mode', 'Status', 'Actions'].map(header => (
                   <th key={header} className="px-6 py-4 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">{header}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filteredBills.map((bill) => {
-                const { amount, discount, finalAmount, paidAmount, isPaid } = getDisplayAmounts(bill)
+                const { amount, discount, dueAmount, paidAmount, isPaid } = getDisplayAmounts(bill)
                 return (
                   <tr key={bill.id} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-primary/50 transition">
                     <td className="px-6 py-4 font-semibold text-gray-900 dark:text-white">{bill.billNo || bill.id}</td>
@@ -254,7 +254,7 @@ export default function BillingPage({ user }) {
                     <td className="px-6 py-4 text-gray-600 dark:text-gray-400">{String(bill.billDate || '').slice(0, 10) || 'N/A'}</td>
                     <td className="px-6 py-4 text-gray-600 dark:text-gray-400">Rs. {amount.toLocaleString()}</td>
                     <td className="px-6 py-4 text-gray-600 dark:text-gray-400">Rs. {discount.toLocaleString()}</td>
-                    <td className="px-6 py-4 font-semibold text-gray-900 dark:text-white">Rs. {finalAmount.toLocaleString()}</td>
+                    <td className="px-6 py-4 font-semibold text-orange-600">Rs. {dueAmount.toLocaleString()}</td>
                     <td className="px-6 py-4 text-gray-600 dark:text-gray-400">Rs. {paidAmount.toLocaleString()}</td>
                     <td className="px-6 py-4 text-gray-600 dark:text-gray-400">{bill.paymentMode || 'N/A'}</td>
                     <td className="px-6 py-4">

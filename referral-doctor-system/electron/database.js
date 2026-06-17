@@ -876,7 +876,7 @@ class DatabaseManager {
       const discount = Math.max(0, toNumber(data.discount));
       const finalAmount = Math.max(0, amount - discount);
       const requestedPaidAmount = Math.min(finalAmount, Math.max(0, toNumber(data.paidAmount)));
-      const status = data.status || data.paymentStatus || (finalAmount > 0 && requestedPaidAmount >= finalAmount ? 'Paid' : 'Pending');
+      const status = requestedPaidAmount >= finalAmount ? 'Paid' : 'Pending';
       const paidAmount = requestedPaidAmount;
       const dueAmount = Math.max(0, finalAmount - paidAmount);
       if (amount <= 0) {
@@ -887,12 +887,6 @@ class DatabaseManager {
       }
       if (discount > amount) {
         return { success: false, message: 'Discount cannot be greater than amount.' };
-      }
-      if (status === 'Paid' && paidAmount <= 0) {
-        return { success: false, message: 'Paid status requires paid amount greater than 0.' };
-      }
-      if (status === 'Paid' && paidAmount < finalAmount) {
-        return { success: false, message: 'Paid status requires full final amount to be paid.' };
       }
       if (data.paymentMode === 'Cheque' && !String(data.checkNo || '').trim()) {
         return { success: false, message: 'Check No is required for cheque payments.' };
@@ -1119,7 +1113,7 @@ class DatabaseManager {
       const requestedPaidAmount = data.hasOwnProperty('paidAmount')
         ? Math.min(finalAmount, Math.max(0, toNumber(data.paidAmount)))
         : Math.min(finalAmount, toNumber(existing.paidAmount));
-      const status = data.status || data.paymentStatus || (finalAmount > 0 && requestedPaidAmount >= finalAmount ? 'Paid' : 'Pending');
+      const status = requestedPaidAmount >= finalAmount ? 'Paid' : 'Pending';
       const paidAmount = requestedPaidAmount;
       const dueAmount = Math.max(0, finalAmount - paidAmount);
       const paymentMode = data.paymentMode ?? existing.paymentMode ?? '';
@@ -1134,12 +1128,6 @@ class DatabaseManager {
       }
       if (discount > amount) {
         return { success: false, message: 'Discount cannot be greater than amount.' };
-      }
-      if (status === 'Paid' && paidAmount <= 0) {
-        return { success: false, message: 'Paid status requires paid amount greater than 0.' };
-      }
-      if (status === 'Paid' && paidAmount < finalAmount) {
-        return { success: false, message: 'Paid status requires full final amount to be paid.' };
       }
       if (paymentMode === 'Cheque' && !String(data.checkNo ?? existing.checkNo ?? '').trim()) {
         return { success: false, message: 'Check No is required for cheque payments.' };
