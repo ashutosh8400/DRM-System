@@ -347,6 +347,12 @@ class APIClient {
       }
       if (methodName === 'delete') {
         const [id] = args;
+        const bills = this._getTable('mock_bills');
+        const billIds = bills.filter(b => b.patientId === id).map(b => b.id);
+        this._saveTable('mock_returns', this._getTable('mock_returns').filter(r => !billIds.includes(r.billId)));
+        this._saveTable('mock_billItems', this._getTable('mock_billItems').filter(item => !billIds.includes(item.billId)));
+        this._saveTable('mock_bills', bills.filter(b => b.patientId !== id));
+        this._saveTable('mock_referrals', this._getTable('mock_referrals').filter(r => r.patientId !== id));
         this._saveTable('mock_patients', patients.filter(p => p.id !== id));
         return { success: true };
       }

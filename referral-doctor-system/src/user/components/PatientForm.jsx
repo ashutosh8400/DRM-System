@@ -1,8 +1,11 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import TestMultiSelect, { splitTests } from './TestMultiSelect'
 import Toast from '../../components/Toast'
 
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 export default function PatientForm({ patient, onSave, onCancel }) {
   const initialData = useMemo(() => ({
@@ -20,6 +23,12 @@ export default function PatientForm({ patient, onSave, onCancel }) {
   const [formData, setFormData] = useState(initialData)
   const [errors, setErrors] = useState({})
   const [toast, setToast] = useState('')
+
+  useEffect(() => {
+    setFormData(initialData)
+    setErrors({})
+    setToast('')
+  }, [initialData])
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -84,6 +93,7 @@ export default function PatientForm({ patient, onSave, onCancel }) {
                 inputMode={name === 'mobile' ? 'numeric' : undefined}
                 maxLength={name === 'mobile' ? 10 : undefined}
                 pattern={name === 'mobile' ? '\\d{10}' : undefined}
+                required={name === 'name' || name === 'mobile'}
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-primary dark:text-white ${
                   errors[name] ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                 }`}
@@ -122,6 +132,7 @@ export default function PatientForm({ patient, onSave, onCancel }) {
               min={today()}
               value={formData.visitDate || today()}
               onChange={handleChange}
+              required
               className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-primary dark:text-white ${
                 errors.visitDate ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
               }`}
