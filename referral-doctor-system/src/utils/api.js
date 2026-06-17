@@ -210,6 +210,25 @@ class APIClient {
       return { success: true };
     }
 
+    if (moduleName === 'auth' && methodName === 'changePassword') {
+      const [oldPassword, newPassword] = args;
+      const currentUserId = this._getCurrentUserId();
+      if (!oldPassword || !newPassword) {
+        return { success: false, message: 'Old password and new password are required.' };
+      }
+      if (String(newPassword).length < 6) {
+        return { success: false, message: 'New password must be at least 6 characters.' };
+      }
+      const users = this._ensureUsersHavePasswords();
+      const user = users.find(u => u.id === currentUserId);
+      if (!user) return { success: false, message: 'User not found.' };
+      if (user.password !== oldPassword) {
+        return { success: false, message: 'Old password is incorrect.' };
+      }
+      this._saveTable('mock_users', users.map(u => u.id === currentUserId ? { ...u, password: newPassword } : u));
+      return { success: true };
+    }
+
     if (moduleName === 'user' && methodName === 'get') {
       const users = this._getTable('mock_users');
       const user = users.find(u => u.id === args[0]);
@@ -843,6 +862,7 @@ class APIClient {
   async login(username, password) { return this._call('auth', 'login', username, password); }
   async restoreSession(userId)    { return this._call('auth', 'restoreSession', userId); }
   async logout()                  { return this._call('auth', 'logout'); }
+  async changePassword(oldPassword, newPassword) { return this._call('auth', 'changePassword', oldPassword, newPassword); }
   async getUser(userId)            { return this._call('user', 'get', userId); }
   async getPublicSettings()        { return this._call('user', 'getSettings'); }
 

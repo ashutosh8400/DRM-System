@@ -404,6 +404,28 @@ class DatabaseManager {
     return user ? { ...user, role: normalizeRole(user.role) } : null;
   }
 
+  changePassword(userId, oldPassword, newPassword) {
+    try {
+      if (!oldPassword || !newPassword) {
+        return { success: false, message: 'Old password and new password are required.' };
+      }
+      if (String(newPassword).length < 6) {
+        return { success: false, message: 'New password must be at least 6 characters.' };
+      }
+
+      const user = this.db.prepare('SELECT id, password FROM users WHERE id = ?').get(userId);
+      if (!user) return { success: false, message: 'User not found.' };
+      if (user.password !== hashPassword(oldPassword)) {
+        return { success: false, message: 'Old password is incorrect.' };
+      }
+
+      this.db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hashPassword(newPassword), userId);
+      return { success: true };
+    } catch (error) {
+      return { success: false, message: error.message };
+    }
+  }
+
   // ===================== ADMIN METHODS =====================
   getAllUsers() {
     return this.db.prepare('SELECT id, username, role, name, email, isActive, createdAt FROM users ORDER BY createdAt DESC').all()

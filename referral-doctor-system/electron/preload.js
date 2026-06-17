@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('electron', {
     login: (username, password) => ipcRenderer.invoke('auth:login', username, password),
     restoreSession: (userId) => ipcRenderer.invoke('auth:restoreSession', userId),
     logout: () => ipcRenderer.invoke('auth:logout'),
+    changePassword: (oldPassword, newPassword) => ipcRenderer.invoke('auth:changePassword', oldPassword, newPassword),
   },
 
   // User API

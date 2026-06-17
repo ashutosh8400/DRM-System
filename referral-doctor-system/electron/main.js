@@ -116,6 +116,12 @@ function setupIpcHandlers() {
     return { success: true };
   });
 
+  ipcMain.handle('auth:changePassword', async (event, oldPassword, newPassword) => {
+    const auth = requireUser(event);
+    if (!auth.authorized) return auth.response;
+    return db.changePassword(auth.user.id, oldPassword, newPassword);
+  });
+
   // User handlers
   ipcMain.handle('user:get', async (event, userId) => {
     return db.getUser(userId);
