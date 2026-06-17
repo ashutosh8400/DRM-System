@@ -15,7 +15,6 @@ export default function BillingForm({ patients, doctors, bill, onSave, onCancel 
     paidAmount: bill?.paidAmount ?? 0,
     paymentMode: bill?.paymentMode || 'Cash',
     checkNo: bill?.checkNo || '',
-    status: bill?.status || bill?.paymentStatus || 'Pending',
     billDate: bill?.billDate ? String(bill.billDate).slice(0, 10) : today(),
   }), [bill, patients, doctors])
 
@@ -24,7 +23,7 @@ export default function BillingForm({ patients, doctors, bill, onSave, onCancel 
   const discount = Number(formData.discount) || 0
   const finalAmount = Math.max(0, amount - discount)
   const paidAmount = Math.min(finalAmount, Number(formData.paidAmount) || 0)
-  const dueAmount = Math.max(0, finalAmount - paidAmount)
+  const paymentStatus = paidAmount >= finalAmount ? 'Paid' : 'Pending'
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -76,19 +75,11 @@ export default function BillingForm({ patients, doctors, bill, onSave, onCancel 
       alert('Paid amount cannot be greater than final amount.')
       return
     }
-    if (formData.status === 'Paid' && paidAmount <= 0) {
-      alert('Paid status requires paid amount greater than 0.')
-      return
-    }
-    if (formData.status === 'Paid' && paidAmount < finalAmount) {
-      alert('Paid status requires full final amount to be paid.')
-      return
-    }
     if (formData.paymentMode === 'Cheque' && !formData.checkNo.trim()) {
       alert('Check No is required for cheque payments.')
       return
     }
-    if (formData.status === 'Paid' && !window.confirm('Mark this bill as Paid? Paid bills cannot be edited later.')) {
+    if (paymentStatus === 'Paid' && !window.confirm('Mark this bill as Paid? Paid bills cannot be edited later.')) {
       return
     }
     onSave({
@@ -102,11 +93,11 @@ export default function BillingForm({ patients, doctors, bill, onSave, onCancel 
       finalAmount,
       total: finalAmount,
       paidAmount,
-      dueAmount,
+      dueAmount: Math.max(0, finalAmount - paidAmount),
       paymentMode: formData.paymentMode,
       checkNo: formData.paymentMode === 'Cheque' ? formData.checkNo.trim() : '',
-      status: formData.status,
-      paymentStatus: formData.status,
+      status: paymentStatus,
+      paymentStatus,
       billDate: formData.billDate,
       items: [],
     })
@@ -208,10 +199,13 @@ export default function BillingForm({ patients, doctors, bill, onSave, onCancel 
             </div>
             <div>
               <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Status</label>
-              <select name="status" value={formData.status} onChange={handleChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 dark:bg-primary dark:border-gray-600 dark:text-white">
-                <option>Pending</option>
-                <option>Paid</option>
-              </select>
+              <div className={`w-full px-4 py-2 border rounded-lg font-semibold ${
+                paymentStatus === 'Paid'
+                  ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-900/40 dark:bg-green-900/20 dark:text-green-300'
+                  : 'border-yellow-200 bg-yellow-50 text-yellow-700 dark:border-yellow-900/40 dark:bg-yellow-900/20 dark:text-yellow-300'
+              }`}>
+                {paymentStatus}
+              </div>
             </div>
           </div>
 
@@ -225,8 +219,8 @@ export default function BillingForm({ patients, doctors, bill, onSave, onCancel 
               <p className="text-2xl font-bold text-green-600">Rs. {paidAmount.toLocaleString()}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Due Amount</p>
-              <p className="text-2xl font-bold text-orange-600">Rs. {dueAmount.toLocaleString()}</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Status</p>
+              <p className={`text-2xl font-bold ${paymentStatus === 'Paid' ? 'text-green-600' : 'text-yellow-600'}`}>{paymentStatus}</p>
             </div>
           </div>
 
