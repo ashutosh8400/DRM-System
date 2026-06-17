@@ -200,6 +200,7 @@ class APIClient {
         return { success: false, message: 'Account is deactivated' };
       }
       if (user) {
+        this._claimUnownedData(user.id);
         return { success: true, user: { id: user.id, username: user.username, role: user.role, name: user.name, email: user.email, isActive: user.isActive } };
       }
       return { success: false };
@@ -558,7 +559,7 @@ class APIClient {
         const status = requestedPaidAmount >= finalAmount ? 'Paid' : 'Pending';
         const paidAmount = requestedPaidAmount;
         const dueAmount = Math.max(0, finalAmount - paidAmount);
-        const newBill = {
+        const newBill = this._withCurrentUser({
           ...data,
           id,
           billNo: data.billNo || `BILL-${String(userBills.length + 1).padStart(5, '0')}`,
@@ -573,7 +574,7 @@ class APIClient {
           checkNo: data.paymentMode === 'Cheque' ? String(data.checkNo || '').trim() : '',
           billDate,
           createdAt: new Date().toISOString()
-        };
+        });
         bills.push(newBill);
         this._saveTable('mock_bills', bills);
 
@@ -619,7 +620,7 @@ class APIClient {
         const status = requestedPaidAmount >= finalAmount ? 'Paid' : 'Pending';
         const paidAmount = requestedPaidAmount;
         const dueAmount = Math.max(0, finalAmount - paidAmount);
-        const updated = bills.map(b => b.id === id ? {
+        const updated = bills.map(b => b.id === id && b.userId === userId ? {
           ...b,
           ...data,
           amount,
