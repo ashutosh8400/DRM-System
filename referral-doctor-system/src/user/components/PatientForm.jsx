@@ -1,7 +1,11 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import TestMultiSelect, { splitTests } from './TestMultiSelect'
+import Toast from '../../components/Toast'
 
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 export default function PatientForm({ patient, onSave, onCancel }) {
   const initialData = useMemo(() => ({
@@ -18,10 +22,18 @@ export default function PatientForm({ patient, onSave, onCancel }) {
 
   const [formData, setFormData] = useState(initialData)
   const [errors, setErrors] = useState({})
+  const [toast, setToast] = useState('')
+
+  useEffect(() => {
+    setFormData(initialData)
+    setErrors({})
+    setToast('')
+  }, [initialData])
 
   const handleChange = (e) => {
     const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
+    const nextValue = name === 'mobile' ? value.replace(/\D/g, '').slice(0, 10) : value
+    setFormData(prev => ({ ...prev, [name]: nextValue }))
     setErrors(prev => ({ ...prev, [name]: '' }))
   }
 
@@ -35,6 +47,9 @@ export default function PatientForm({ patient, onSave, onCancel }) {
       nextErrors.visitDate = 'Backdated patient entries are not allowed'
     }
     setErrors(nextErrors)
+    if (Object.keys(nextErrors).length > 0) {
+      setToast(Object.values(nextErrors)[0])
+    }
     return Object.keys(nextErrors).length === 0
   }
 
@@ -55,6 +70,7 @@ export default function PatientForm({ patient, onSave, onCancel }) {
 
   return (
     <div className="bg-white dark:bg-secondary rounded-lg shadow-lg p-6 max-w-4xl">
+      <Toast message={toast} onClose={() => setToast('')} />
       <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
         {patient ? 'Edit Patient' : 'Add Patient'}
       </h2>
@@ -74,6 +90,10 @@ export default function PatientForm({ patient, onSave, onCancel }) {
                 value={formData[name] || ''}
                 onChange={handleChange}
                 min={name === 'age' ? '0' : undefined}
+                inputMode={name === 'mobile' ? 'numeric' : undefined}
+                maxLength={name === 'mobile' ? 10 : undefined}
+                pattern={name === 'mobile' ? '\\d{10}' : undefined}
+                required={name === 'name' || name === 'mobile'}
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-primary dark:text-white ${
                   errors[name] ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                 }`}
@@ -112,6 +132,7 @@ export default function PatientForm({ patient, onSave, onCancel }) {
               min={today()}
               value={formData.visitDate || today()}
               onChange={handleChange}
+              required
               className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-primary dark:text-white ${
                 errors.visitDate ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
               }`}

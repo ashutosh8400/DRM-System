@@ -1,16 +1,32 @@
 import React, { useState, useEffect } from 'react'
 import { Lock, Mail, Eye, EyeOff } from 'lucide-react'
+import Toast from '../components/Toast'
 
 export default function LoginPage({ onLogin }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
+  const [toast, setToast] = useState('')
+  const [toastType, setToastType] = useState('error')
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = (e) => {
     e.preventDefault()
     setError('')
+
+    if (!username.trim()) {
+      setToastType('error')
+      setToast('Please enter username')
+      return
+    }
+
+    if (!password.trim()) {
+      setToastType('error')
+      setToast('Please enter password')
+      return
+    }
+
     setLoading(true)
 
     // Static credentials
@@ -18,7 +34,7 @@ export default function LoginPage({ onLogin }) {
     const VALID_PASSWORD = 'admin123'
 
     setTimeout(() => {
-      if (username === VALID_USERNAME && password === VALID_PASSWORD) {
+      if (username.trim() === VALID_USERNAME && password === VALID_PASSWORD) {
         const user = {
           id: '1',
           username: 'admin',
@@ -26,9 +42,14 @@ export default function LoginPage({ onLogin }) {
           role: 'Super Admin',
           email: 'admin@hospital.com'
         }
+        setToastType('success')
+        setToast('Login successful')
         onLogin(user)
       } else {
-        setError('Invalid username or password')
+        const message = 'Invalid username or password'
+        setError(message)
+        setToastType('error')
+        setToast(message)
         setLoading(false)
       }
     }, 500)
@@ -36,6 +57,7 @@ export default function LoginPage({ onLogin }) {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-900 flex items-center justify-center p-4">
+      <Toast message={toast} type={toastType} onClose={() => setToast('')} />
       {/* Main Container */}
       <div className="flex gap-12 w-full max-w-5xl">
         {/* Left Side - Branding */}
@@ -104,7 +126,7 @@ export default function LoginPage({ onLogin }) {
               Password: <code className="bg-blue-100 px-2 py-1 rounded">admin123</code>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-5" noValidate>
               {/* Username */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
