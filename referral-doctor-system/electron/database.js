@@ -651,7 +651,25 @@ class DatabaseManager {
 
   deletePatient(id) {
     try {
-      this.db.prepare('DELETE FROM patients WHERE id = ?').run(id);
+      const deletePatientWithRelatedData = this.db.transaction((patientId) => {
+        const bills = this.db.prepare('SELECT id FROM bills WHERE patientId = ?').all(patientId);
+        const billIds = bills.map((bill) => bill.id);
+
+        for (const billId of billIds) {
+          this.db.prepare('DELETE FROM returns WHERE billId = ?').run(billId);
+          this.db.prepare('DELETE FROM billItems WHERE billId = ?').run(billId);
+        }
+
+        this.db.prepare('DELETE FROM bills WHERE patientId = ?').run(patientId);
+        this.db.prepare('DELETE FROM referrals WHERE patientId = ?').run(patientId);
+        const result = this.db.prepare('DELETE FROM patients WHERE id = ?').run(patientId);
+        return result.changes;
+      });
+
+      const changes = deletePatientWithRelatedData(id);
+      if (changes === 0) {
+        return { success: false, message: 'Patient not found.' };
+      }
       return { success: true };
     } catch (error) {
       return { success: false, message: error.message };
