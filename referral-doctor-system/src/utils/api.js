@@ -57,6 +57,20 @@ class APIClient {
     return { ...data, userId: this._getCurrentUserId() };
   }
 
+  _getCurrentUser() {
+    try {
+      return JSON.parse(localStorage.getItem('currentUser') || '{}');
+    } catch (error) {
+      return {};
+    }
+  }
+
+  _hasUserPermission(permissionKey) {
+    const user = this._getCurrentUser();
+    if (['super_admin', 'admin'].includes(user.role)) return true;
+    return user[permissionKey] !== 0;
+  }
+
   _claimUnownedData(userId) {
     for (const table of ['mock_doctors', 'mock_patients', 'mock_referrals', 'mock_bills']) {
       const rows = this._getTable(table);
@@ -75,14 +89,20 @@ class APIClient {
   // Ensure mock users have password field (migration helper)
   _ensureUsersHavePasswords() {
     const users = this._getTable('mock_users');
-    let needsMigration = users.some(u => !u.password);
+    let needsMigration = users.some(u => !u.password || !u.hasOwnProperty('canAccessBilling') || !u.hasOwnProperty('canAccessReports') || !u.hasOwnProperty('canEditPaidBills'));
     if (needsMigration) {
-      console.log('[FALLBACK] Migrating users to add missing password field');
+      console.log('[FALLBACK] Migrating users to add missing password/permission fields');
       const migratedUsers = users.map(u => {
+        const nextUser = {
+          ...u,
+          canAccessBilling: u.hasOwnProperty('canAccessBilling') ? u.canAccessBilling : 1,
+          canAccessReports: u.hasOwnProperty('canAccessReports') ? u.canAccessReports : 1,
+          canEditPaidBills: u.hasOwnProperty('canEditPaidBills') ? u.canEditPaidBills : 0,
+        };
         if (!u.password) {
-          return { ...u, password: u.username === 'admin' ? 'admin123' : u.username === 'user' ? 'user123' : 'password123' };
+          nextUser.password = u.username === 'admin' ? 'admin123' : u.username === 'user' ? 'user123' : 'password123';
         }
-        return u;
+        return nextUser;
       });
       this._saveTable('mock_users', migratedUsers);
       return migratedUsers;
@@ -94,20 +114,33 @@ class APIClient {
   _initMockDb() {
     if (!localStorage.getItem('mock_users')) {
       this._saveTable('mock_users', [
-        { id: 'admin-1', username: 'admin', password: 'admin123', role: 'super_admin', name: 'Administrator', email: 'admin@referral.local', isActive: 1, createdAt: new Date().toISOString() },
-        { id: 'user-1', username: 'user', password: 'user123', role: 'user', name: 'Demo User', email: 'user@referral.local', isActive: 1, createdAt: new Date().toISOString() },
+        { id: 'admin-1', username: 'admin', password: 'admin123', role: 'super_admin', name: 'Administrator', email: 'admin@referral.local', isActive: 1, canAccessBilling: 1, canAccessReports: 1, canEditPaidBills: 1, createdAt: new Date().toISOString() },
+        { id: 'user-1', username: 'user', password: 'user123', role: 'user', name: 'Demo User', email: 'user@referral.local', isActive: 1, canAccessBilling: 1, canAccessReports: 1, canEditPaidBills: 0, createdAt: new Date().toISOString() },
       ]);
     } else {
       // Migrate: add password field to existing users if missing
       const users = this._getTable('mock_users');
       let needsMigration = false;
       const migratedUsers = users.map(u => {
+        const nextUser = { ...u };
         if (!u.password) {
           needsMigration = true;
           // Assign default passwords based on username
-          return { ...u, password: u.username === 'admin' ? 'admin123' : u.username === 'user' ? 'user123' : 'password123' };
+          nextUser.password = u.username === 'admin' ? 'admin123' : u.username === 'user' ? 'user123' : 'password123';
         }
-        return u;
+        if (!u.hasOwnProperty('canAccessBilling')) {
+          needsMigration = true;
+          nextUser.canAccessBilling = 1;
+        }
+        if (!u.hasOwnProperty('canAccessReports')) {
+          needsMigration = true;
+          nextUser.canAccessReports = 1;
+        }
+        if (!u.hasOwnProperty('canEditPaidBills')) {
+          needsMigration = true;
+          nextUser.canEditPaidBills = 0;
+        }
+        return nextUser;
       });
       if (needsMigration) {
         console.log('[API] Migrating existing users to add password field');
@@ -182,7 +215,7 @@ class APIClient {
             return { success: false, message: 'Account is deactivated' };
           }
           this._claimUnownedData(user.id);
-          return { success: true, user: { id: user.id, username: user.username, role: user.role, name: user.name, email: user.email, isActive: user.isActive } };
+          return { success: true, user: { id: user.id, username: user.username, role: user.role, name: user.name, email: user.email, isActive: user.isActive, canAccessBilling: user.canAccessBilling, canAccessReports: user.canAccessReports, canEditPaidBills: user.canEditPaidBills } };
         } else {
           console.log(`[FALLBACK] password mismatch. stored='${user.password}', provided='${password}'`);
         }
@@ -201,7 +234,7 @@ class APIClient {
       }
       if (user) {
         this._claimUnownedData(user.id);
-        return { success: true, user: { id: user.id, username: user.username, role: user.role, name: user.name, email: user.email, isActive: user.isActive } };
+        return { success: true, user: { id: user.id, username: user.username, role: user.role, name: user.name, email: user.email, isActive: user.isActive, canAccessBilling: user.canAccessBilling, canAccessReports: user.canAccessReports, canEditPaidBills: user.canEditPaidBills } };
       }
       return { success: false };
     }
@@ -266,7 +299,10 @@ class APIClient {
           name: data.name, 
           email: data.email || '', 
           role: data.role || 'user',
-          isActive: data.hasOwnProperty('isActive') ? (data.isActive ? 1 : 0) : 1, 
+          isActive: data.hasOwnProperty('isActive') ? (data.isActive ? 1 : 0) : 1,
+          canAccessBilling: data.hasOwnProperty('canAccessBilling') ? (data.canAccessBilling ? 1 : 0) : 1,
+          canAccessReports: data.hasOwnProperty('canAccessReports') ? (data.canAccessReports ? 1 : 0) : 1,
+          canEditPaidBills: data.hasOwnProperty('canEditPaidBills') ? (data.canEditPaidBills ? 1 : 0) : 0,
           createdAt: new Date().toISOString() 
         };
         users.push(user);
@@ -289,7 +325,10 @@ class APIClient {
               name: data.name, 
               email: data.email || '',
               role: data.role,
-              isActive: data.hasOwnProperty('isActive') ? (data.isActive ? 1 : 0) : user.isActive
+              isActive: data.hasOwnProperty('isActive') ? (data.isActive ? 1 : 0) : user.isActive,
+              canAccessBilling: data.hasOwnProperty('canAccessBilling') ? (data.canAccessBilling ? 1 : 0) : user.canAccessBilling,
+              canAccessReports: data.hasOwnProperty('canAccessReports') ? (data.canAccessReports ? 1 : 0) : user.canAccessReports,
+              canEditPaidBills: data.hasOwnProperty('canEditPaidBills') ? (data.canEditPaidBills ? 1 : 0) : user.canEditPaidBills
             };
             if (data.password) {
               updatedUser.password = data.password;
@@ -618,11 +657,11 @@ class APIClient {
         const userId = this._getCurrentUserId();
         const existing = bills.find(b => b.id === id && b.userId === userId);
         if (!existing) return { success: false, message: 'Bill not found.' };
-        if (['Paid', 'completed'].includes(existing.status || existing.paymentStatus)) {
+        if (['Paid', 'completed'].includes(existing.status || existing.paymentStatus) && !this._hasUserPermission('canEditPaidBills')) {
           return { success: false, message: 'Paid bills cannot be edited.' };
         }
         const billDate = data.billDate || data.date || existing.billDate || todayStr;
-        if (billDate < todayStr) return { success: false, message: 'Backdated billing is not allowed.' };
+        if (String(billDate).slice(0, 10) !== String(existing.billDate || '').slice(0, 10) && billDate < todayStr) return { success: false, message: 'Backdated billing is not allowed.' };
         const amount = Number(data.amount ?? data.subtotal ?? existing.amount ?? existing.subtotal) || 0;
         const discount = Number(data.discount ?? existing.discount) || 0;
         const nextPaymentMode = data.paymentMode ?? existing.paymentMode ?? '';

@@ -57,6 +57,9 @@ class DatabaseManager {
         name TEXT NOT NULL,
         email TEXT,
         isActive INTEGER DEFAULT 1,
+        canAccessBilling INTEGER DEFAULT 1,
+        canAccessReports INTEGER DEFAULT 1,
+        canEditPaidBills INTEGER DEFAULT 0,
         createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -251,6 +254,21 @@ class DatabaseManager {
       // Column may already exist
     }
     try {
+      this.db.exec(`ALTER TABLE users ADD COLUMN canAccessBilling INTEGER DEFAULT 1`);
+    } catch (e) {
+      // Column may already exist
+    }
+    try {
+      this.db.exec(`ALTER TABLE users ADD COLUMN canAccessReports INTEGER DEFAULT 1`);
+    } catch (e) {
+      // Column may already exist
+    }
+    try {
+      this.db.exec(`ALTER TABLE users ADD COLUMN canEditPaidBills INTEGER DEFAULT 0`);
+    } catch (e) {
+      // Column may already exist
+    }
+    try {
       this.db.exec(`ALTER TABLE referrals ADD COLUMN status TEXT DEFAULT 'pending'`);
     } catch (e) {
       // Column may already exist
@@ -386,6 +404,9 @@ class DatabaseManager {
             name: user.name,
             email: user.email,
             isActive: user.isActive,
+            canAccessBilling: user.canAccessBilling,
+            canAccessReports: user.canAccessReports,
+            canEditPaidBills: user.canEditPaidBills,
           }
         };
       }
@@ -400,7 +421,7 @@ class DatabaseManager {
   }
 
   getUser(userId) {
-    const user = this.db.prepare('SELECT id, username, role, name, email, isActive FROM users WHERE id = ?').get(userId);
+    const user = this.db.prepare('SELECT id, username, role, name, email, isActive, canAccessBilling, canAccessReports, canEditPaidBills FROM users WHERE id = ?').get(userId);
     return user ? { ...user, role: normalizeRole(user.role) } : null;
   }
 
@@ -428,7 +449,7 @@ class DatabaseManager {
 
   // ===================== ADMIN METHODS =====================
   getAllUsers() {
-    return this.db.prepare('SELECT id, username, role, name, email, isActive, createdAt FROM users ORDER BY createdAt DESC').all()
+    return this.db.prepare('SELECT id, username, role, name, email, isActive, canAccessBilling, canAccessReports, canEditPaidBills, createdAt FROM users ORDER BY createdAt DESC').all()
       .map(user => ({ ...user, role: normalizeRole(user.role) }));
   }
 
@@ -438,10 +459,13 @@ class DatabaseManager {
       if (!data.password) return { success: false, message: 'Password is required.' };
       const id = uuidv4();
       const isActive = data.hasOwnProperty('isActive') ? (data.isActive ? 1 : 0) : 1;
+      const canAccessBilling = data.hasOwnProperty('canAccessBilling') ? (data.canAccessBilling ? 1 : 0) : 1;
+      const canAccessReports = data.hasOwnProperty('canAccessReports') ? (data.canAccessReports ? 1 : 0) : 1;
+      const canEditPaidBills = data.hasOwnProperty('canEditPaidBills') ? (data.canEditPaidBills ? 1 : 0) : 0;
       this.db.prepare(`
-        INSERT INTO users (id, username, password, role, name, email, isActive)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(id, data.username, hashPassword(data.password), normalizeRole(data.role), data.name, data.email || null, isActive);
+        INSERT INTO users (id, username, password, role, name, email, isActive, canAccessBilling, canAccessReports, canEditPaidBills)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(id, data.username, hashPassword(data.password), normalizeRole(data.role), data.name, data.email || null, isActive, canAccessBilling, canAccessReports, canEditPaidBills);
       return { success: true, id };
     } catch (error) {
       return { success: false, message: error.message };
@@ -454,19 +478,22 @@ class DatabaseManager {
       if (!existing) return { success: false, message: 'User not found.' };
 
       const isActive = data.hasOwnProperty('isActive') ? (data.isActive ? 1 : 0) : existing.isActive;
+      const canAccessBilling = data.hasOwnProperty('canAccessBilling') ? (data.canAccessBilling ? 1 : 0) : existing.canAccessBilling;
+      const canAccessReports = data.hasOwnProperty('canAccessReports') ? (data.canAccessReports ? 1 : 0) : existing.canAccessReports;
+      const canEditPaidBills = data.hasOwnProperty('canEditPaidBills') ? (data.canEditPaidBills ? 1 : 0) : existing.canEditPaidBills;
 
       if (data.password) {
         this.db.prepare(`
           UPDATE users
-          SET username = ?, name = ?, email = ?, role = ?, isActive = ?, password = ?
+          SET username = ?, name = ?, email = ?, role = ?, isActive = ?, canAccessBilling = ?, canAccessReports = ?, canEditPaidBills = ?, password = ?
           WHERE id = ?
-        `).run(data.username, data.name, data.email || null, normalizeRole(data.role), isActive, hashPassword(data.password), id);
+        `).run(data.username, data.name, data.email || null, normalizeRole(data.role), isActive, canAccessBilling, canAccessReports, canEditPaidBills, hashPassword(data.password), id);
       } else {
         this.db.prepare(`
           UPDATE users
-          SET username = ?, name = ?, email = ?, role = ?, isActive = ?
+          SET username = ?, name = ?, email = ?, role = ?, isActive = ?, canAccessBilling = ?, canAccessReports = ?, canEditPaidBills = ?
           WHERE id = ?
-        `).run(data.username, data.name, data.email || null, normalizeRole(data.role), isActive, id);
+        `).run(data.username, data.name, data.email || null, normalizeRole(data.role), isActive, canAccessBilling, canAccessReports, canEditPaidBills, id);
       }
 
       return { success: true };
@@ -1147,12 +1174,14 @@ class DatabaseManager {
       const existing = this.db.prepare('SELECT * FROM bills WHERE id = ? AND userId = ?').get(id, userId);
       if (!existing) return { success: false, message: 'Bill not found.' };
       const existingStatus = existing.status || existing.paymentStatus;
-      if (existingStatus === 'Paid' || existingStatus === 'completed') {
+      const user = this.getUser(userId);
+      const canEditPaidBill = ['super_admin', 'admin'].includes(normalizeRole(user?.role)) || user?.canEditPaidBills === 1;
+      if ((existingStatus === 'Paid' || existingStatus === 'completed') && !canEditPaidBill) {
         return { success: false, message: 'Paid bills cannot be edited.' };
       }
 
       const billDate = data.billDate || data.date || existing.billDate || getTodayString();
-      if (isBackdated(billDate)) {
+      if (String(billDate).slice(0, 10) !== String(existing.billDate || '').slice(0, 10) && isBackdated(billDate)) {
         return { success: false, message: 'Backdated billing is not allowed.' };
       }
 

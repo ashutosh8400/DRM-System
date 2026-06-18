@@ -38,6 +38,15 @@ function requireUser(event) {
   return { authorized: true, user };
 }
 
+function requirePermission(event, permissionKey, message) {
+  const auth = requireUser(event);
+  if (!auth.authorized) return auth;
+  if (!isAdminRole(auth.user.role) && auth.user[permissionKey] === 0) {
+    return { authorized: false, response: { success: false, message } };
+  }
+  return auth;
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -343,6 +352,8 @@ function setupIpcHandlers() {
   });
 
   ipcMain.handle('bill:delete', async (event, id) => {
+    const auth = requireUser(event);
+    if (!auth.authorized) return auth.response;
     return db.deleteBill(id);
   });
 
