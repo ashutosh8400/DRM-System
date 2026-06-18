@@ -10,6 +10,7 @@ const emptyForm = {
   role: 'user',
   password: '',
   isActive: true,
+  canEditPaidBills: false,
 }
 
 const ROLE_LABELS = {
@@ -86,6 +87,7 @@ export default function UserManagementPage() {
       role: user.role,
       password: '',
       isActive: user.isActive !== 0,
+      canEditPaidBills: user.canEditPaidBills === 1,
     })
   }
 
@@ -101,6 +103,7 @@ export default function UserManagementPage() {
       email: user.email || '',
       role: user.role,
       isActive: newActive,
+      canEditPaidBills: user.canEditPaidBills === 1 ? 1 : 0,
     })
     if (result?.success) {
       showMsg(`User ${newActive ? 'activated' : 'deactivated'} successfully.`)
@@ -217,6 +220,13 @@ export default function UserManagementPage() {
               {form.isActive ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
             </button>
           </div>
+          <div className="flex items-center gap-3 pt-5">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Edit Paid Bills</span>
+            <button type="button" onClick={() => setForm({ ...form, canEditPaidBills: !form.canEditPaidBills })}
+              className={`transition-colors ${form.canEditPaidBills ? 'text-emerald-600' : 'text-gray-400'}`}>
+              {form.canEditPaidBills ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
+            </button>
+          </div>
         </div>
         <div className="flex gap-3 mt-5 pt-4 border-t dark:border-gray-700">
           <button type="submit" className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg font-medium transition">
@@ -240,6 +250,7 @@ export default function UserManagementPage() {
               <th className="text-left px-6 py-3 text-sm font-semibold text-gray-700 dark:text-gray-300">Name</th>
               <th className="text-left px-6 py-3 text-sm font-semibold text-gray-700 dark:text-gray-300">Username</th>
               <th className="text-left px-6 py-3 text-sm font-semibold text-gray-700 dark:text-gray-300">Role</th>
+              <th className="text-left px-6 py-3 text-sm font-semibold text-gray-700 dark:text-gray-300">Paid Bill Edit</th>
               <th className="text-left px-6 py-3 text-sm font-semibold text-gray-700 dark:text-gray-300">Status</th>
               <th className="text-left px-6 py-3 text-sm font-semibold text-gray-700 dark:text-gray-300">Actions</th>
             </tr>
@@ -252,6 +263,15 @@ export default function UserManagementPage() {
                 <td className="px-6 py-4">
                   <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
                     {ROLE_LABELS[user.role] || user.role}
+                  </span>
+                </td>
+                <td className="px-6 py-4">
+                  <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
+                    user.canEditPaidBills === 1
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                      : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300'
+                  }`}>
+                    {user.canEditPaidBills === 1 ? 'Allowed' : 'Not Allowed'}
                   </span>
                 </td>
                 <td className="px-6 py-4">
@@ -292,7 +312,7 @@ export default function UserManagementPage() {
             ))}
             {users.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-6 py-10 text-center text-gray-400">No users found.</td>
+                <td colSpan={6} className="px-6 py-10 text-center text-gray-400">No users found.</td>
               </tr>
             )}
           </tbody>

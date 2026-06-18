@@ -14,7 +14,7 @@ const RANGE_OPTIONS = [
   { label: '90 Days', days: 90 },
 ]
 
-const COLUMNS = [
+const BASE_COLUMNS = [
   { key: 'visitDate', label: 'Date' },
   { key: 'patientName', label: 'Patient' },
   { key: 'patientMobile', label: 'Mobile' },
@@ -24,7 +24,7 @@ const COLUMNS = [
   { key: 'doctorMobile', label: 'Doctor Mobile' },
   { key: 'test', label: 'Test / Reason' },
   { key: 'billNos', label: 'Bill No' },
-  { key: 'amount', label: 'Amount' },
+  { key: 'amount', label: 'Referral Amount' },
   { key: 'discount', label: 'Discount' },
   { key: 'finalAmount', label: 'Final Amount' },
   { key: 'paidAmount', label: 'Paid Amount' },
@@ -61,20 +61,42 @@ function getCellValue(row, key) {
 export default function ReportsPage() {
   const { currentUser } = useAuth()
   const [selectedDays, setSelectedDays] = useState(1)
+  const [reportCategory, setReportCategory] = useState('all')
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   const canViewReports = ['super_admin', 'admin', 'user'].includes(currentUser?.role)
   const selectedRange = RANGE_OPTIONS.find(option => option.days === selectedDays) || RANGE_OPTIONS[0]
+  const selectedCategoryLabel = reportCategory === 'referral'
+    ? 'Referral'
+    : reportCategory === 'nonReferral'
+      ? 'Non-Referral'
+      : 'All Bills'
+  const amountLabel = reportCategory === 'referral'
+    ? 'Referral Amount'
+    : reportCategory === 'nonReferral'
+      ? 'Non-Referral Amount'
+      : 'Bill Amount'
+  const columns = useMemo(() => BASE_COLUMNS.map(column => (
+    column.key === 'amount' ? { ...column, label: amountLabel } : column
+  )), [amountLabel])
 
-  const totals = useMemo(() => rows.reduce((summary, row) => ({
-    patients: summary.patients + 1,
-    amount: summary.amount + numberValue(row.amount),
-    finalAmount: summary.finalAmount + numberValue(row.finalAmount),
-    paidAmount: summary.paidAmount + numberValue(row.paidAmount),
-    pendingAmount: summary.pendingAmount + numberValue(row.pendingAmount),
-  }), { patients: 0, amount: 0, finalAmount: 0, paidAmount: 0, pendingAmount: 0 }), [rows])
+  const filteredRows = useMemo(() => rows.filter(row => {
+    const hasReferralDoctor = Boolean(row.doctorName)
+    if (reportCategory === 'referral') return hasReferralDoctor
+    if (reportCategory === 'nonReferral') return !hasReferralDoctor
+    return true
+  }), [rows, reportCategory])
+
+  const totals = useMemo(() => filteredRows.reduce((summary, row) => ({
+      patients: summary.patients + 1,
+      amount: summary.amount + numberValue(row.amount),
+      discount: summary.discount + numberValue(row.discount),
+      finalAmount: summary.finalAmount + numberValue(row.finalAmount),
+      paidAmount: summary.paidAmount + numberValue(row.paidAmount),
+      pendingAmount: summary.pendingAmount + numberValue(row.pendingAmount),
+  }), { patients: 0, amount: 0, discount: 0, finalAmount: 0, paidAmount: 0, pendingAmount: 0 }), [filteredRows])
 
   const loadReportData = async (days = selectedDays) => {
     try {
@@ -106,9 +128,9 @@ export default function ReportsPage() {
 
   const downloadExcel = () => {
     const generatedAt = new Date().toLocaleString()
-    const headerHtml = COLUMNS.map(column => `<th>${escapeHtml(column.label)}</th>`).join('')
-    const rowHtml = rows.map(row => (
-      `<tr>${COLUMNS.map(column => `<td>${escapeHtml(getCellValue(row, column.key))}</td>`).join('')}</tr>`
+    const headerHtml = columns.map(column => `<th>${escapeHtml(column.label)}</th>`).join('')
+    const rowHtml = filteredRows.map(row => (
+      `<tr>${columns.map(column => `<td>${escapeHtml(getCellValue(row, column.key))}</td>`).join('')}</tr>`
     )).join('')
 
     const html = `
@@ -122,7 +144,7 @@ export default function ReportsPage() {
           </style>
         </head>
         <body>
-          <h2>Referral Payment Report - ${escapeHtml(selectedRange.label)}</h2>
+          <h2>Billing Payment Report - ${escapeHtml(selectedRange.label)} - ${escapeHtml(selectedCategoryLabel)}</h2>
           <p>Generated: ${escapeHtml(generatedAt)}</p>
           <table>
             <thead><tr>${headerHtml}</tr></thead>
@@ -156,7 +178,7 @@ export default function ReportsPage() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Reports</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">Patient, referral, and payment report for Excel download</p>
+          <p className="text-gray-600 dark:text-gray-400 mt-1">All bill and payment report for Excel download</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <button
@@ -170,7 +192,7 @@ export default function ReportsPage() {
           <button
             type="button"
             onClick={downloadExcel}
-            disabled={rows.length === 0}
+            disabled={filteredRows.length === 0}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
           >
             <Download size={18} />
@@ -179,33 +201,18 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-secondary rounded-lg shadow-lg p-4">
-        <div className="flex flex-wrap gap-3">
-          {RANGE_OPTIONS.map(option => (
-            <button
-              key={option.days}
-              type="button"
-              onClick={() => setSelectedDays(option.days)}
-              className={`px-4 py-2 rounded-lg font-semibold transition ${
-                selectedDays === option.days
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 dark:bg-primary text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-primary/80'
-              }`}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-4">
         <div className="bg-white dark:bg-secondary rounded-lg shadow-lg p-5">
-          <p className="text-sm text-gray-600 dark:text-gray-400">Patients / Visits</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">Bills</p>
           <p className="text-3xl font-bold text-gray-900 dark:text-white mt-2">{totals.patients}</p>
         </div>
         <div className="bg-white dark:bg-secondary rounded-lg shadow-lg p-5">
-          <p className="text-sm text-gray-600 dark:text-gray-400">Amount</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">{amountLabel}</p>
           <p className="text-3xl font-bold text-gray-900 dark:text-white mt-2">{formatMoney(totals.amount)}</p>
+        </div>
+        <div className="bg-white dark:bg-secondary rounded-lg shadow-lg p-5">
+          <p className="text-sm text-gray-600 dark:text-gray-400">Discount</p>
+          <p className="text-3xl font-bold text-red-600 mt-2">{formatMoney(totals.discount)}</p>
         </div>
         <div className="bg-white dark:bg-secondary rounded-lg shadow-lg p-5">
           <p className="text-sm text-gray-600 dark:text-gray-400">Final Amount</p>
@@ -228,11 +235,33 @@ export default function ReportsPage() {
       )}
 
       <div className="bg-white dark:bg-secondary rounded-lg shadow-lg overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3">
-          <FileSpreadsheet size={22} className="text-green-600" />
-          <div>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Referral Payment Report</h2>
-            <p className="text-sm text-gray-600 dark:text-gray-400">{selectedRange.label} data preview</p>
+        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-3">
+            <FileSpreadsheet size={22} className="text-green-600" />
+            <div>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Billing Payment Report</h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400">{selectedRange.label} - {selectedCategoryLabel} data preview</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap justify-end gap-3">
+            <select
+              value={selectedDays}
+              onChange={(event) => setSelectedDays(Number(event.target.value))}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-primary text-gray-700 dark:text-gray-200 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {RANGE_OPTIONS.map(option => (
+                <option key={option.days} value={option.days}>{option.label}</option>
+              ))}
+            </select>
+            <select
+              value={reportCategory}
+              onChange={(event) => setReportCategory(event.target.value)}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-primary text-gray-700 dark:text-gray-200 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Bills</option>
+              <option value="referral">Referral</option>
+              <option value="nonReferral">Non-Referral</option>
+            </select>
           </div>
         </div>
 
@@ -240,7 +269,7 @@ export default function ReportsPage() {
           <table className="w-full">
             <thead>
               <tr className="bg-gray-100 dark:bg-primary border-b border-gray-200 dark:border-gray-700">
-                {COLUMNS.map(column => (
+                {columns.map(column => (
                   <th key={column.key} className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap">
                     {column.label}
                   </th>
@@ -250,18 +279,18 @@ export default function ReportsPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={COLUMNS.length} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={columns.length} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
                     Loading report...
                   </td>
                 </tr>
-              ) : rows.length === 0 ? (
+              ) : filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={COLUMNS.length} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
-                    No report records found for {selectedRange.label}
+                  <td colSpan={columns.length} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+                    No {selectedCategoryLabel.toLowerCase()} report records found for {selectedRange.label}
                   </td>
                 </tr>
               ) : (
-                rows.map(row => (
+                filteredRows.map(row => (
                   <tr key={row.referralId} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-primary/50 transition">
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">{row.visitDate || 'N/A'}</td>
                     <td className="px-4 py-3 font-semibold text-gray-900 dark:text-white whitespace-nowrap">{row.patientName || 'Unknown'}</td>
