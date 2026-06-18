@@ -138,6 +138,7 @@ export default function BillingPage({ user }) {
   })
 
   const canCreateBill = ['super_admin', 'admin', 'user'].includes(activeUser?.role)
+  const canEditPaidBills = ['super_admin', 'admin'].includes(activeUser?.role) || activeUser?.canEditPaidBills === 1
   const totalRevenue = filteredBills
     .filter(b => getDisplayAmounts(b).isPaid)
     .reduce((sum, b) => sum + getDisplayAmounts(b).finalAmount, 0)
@@ -275,7 +276,7 @@ export default function BillingPage({ user }) {
                         <Link to={`${routeBase}/billing/${bill.id}`} className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition" title="View">
                           <Eye size={16} />
                         </Link>
-                        {!isPaid && (
+                        {(!isPaid || canEditPaidBills) && (
                           <button
                             type="button"
                             onClick={() => {

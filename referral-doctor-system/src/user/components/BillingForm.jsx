@@ -55,7 +55,7 @@ export default function BillingForm({ patients, doctors, bill, onSave, onCancel 
       alert('Please select a patient.')
       return
     }
-    if (formData.billDate < today()) {
+    if (!bill && formData.billDate < today()) {
       alert('Backdated billing is not allowed.')
       return
     }
@@ -79,7 +79,7 @@ export default function BillingForm({ patients, doctors, bill, onSave, onCancel 
       alert('Check No is required for cheque payments.')
       return
     }
-    if (paymentStatus === 'Paid' && !window.confirm('Mark this bill as Paid? Paid bills cannot be edited later.')) {
+    if (paymentStatus === 'Paid' && !window.confirm('Mark this bill as Paid?')) {
       return
     }
     onSave({

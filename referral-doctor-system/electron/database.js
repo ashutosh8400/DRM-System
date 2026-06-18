@@ -57,6 +57,9 @@ class DatabaseManager {
         name TEXT NOT NULL,
         email TEXT,
         isActive INTEGER DEFAULT 1,
+        canAccessBilling INTEGER DEFAULT 1,
+        canAccessReports INTEGER DEFAULT 1,
+        canEditPaidBills INTEGER DEFAULT 0,
         createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -251,6 +254,21 @@ class DatabaseManager {
       // Column may already exist
     }
     try {
+      this.db.exec(`ALTER TABLE users ADD COLUMN canAccessBilling INTEGER DEFAULT 1`);
+    } catch (e) {
+      // Column may already exist
+    }
+    try {
+      this.db.exec(`ALTER TABLE users ADD COLUMN canAccessReports INTEGER DEFAULT 1`);
+    } catch (e) {
+      // Column may already exist
+    }
+    try {
+      this.db.exec(`ALTER TABLE users ADD COLUMN canEditPaidBills INTEGER DEFAULT 0`);
+    } catch (e) {
+      // Column may already exist
+    }
+    try {
       this.db.exec(`ALTER TABLE referrals ADD COLUMN status TEXT DEFAULT 'pending'`);
     } catch (e) {
       // Column may already exist
@@ -386,6 +404,9 @@ class DatabaseManager {
             name: user.name,
             email: user.email,
             isActive: user.isActive,
+            canAccessBilling: user.canAccessBilling,
+            canAccessReports: user.canAccessReports,
+            canEditPaidBills: user.canEditPaidBills,
           }
         };
       }
@@ -400,13 +421,35 @@ class DatabaseManager {
   }
 
   getUser(userId) {
-    const user = this.db.prepare('SELECT id, username, role, name, email, isActive FROM users WHERE id = ?').get(userId);
+    const user = this.db.prepare('SELECT id, username, role, name, email, isActive, canAccessBilling, canAccessReports, canEditPaidBills FROM users WHERE id = ?').get(userId);
     return user ? { ...user, role: normalizeRole(user.role) } : null;
+  }
+
+  changePassword(userId, oldPassword, newPassword) {
+    try {
+      if (!oldPassword || !newPassword) {
+        return { success: false, message: 'Old password and new password are required.' };
+      }
+      if (String(newPassword).length < 6) {
+        return { success: false, message: 'New password must be at least 6 characters.' };
+      }
+
+      const user = this.db.prepare('SELECT id, password FROM users WHERE id = ?').get(userId);
+      if (!user) return { success: false, message: 'User not found.' };
+      if (user.password !== hashPassword(oldPassword)) {
+        return { success: false, message: 'Old password is incorrect.' };
+      }
+
+      this.db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hashPassword(newPassword), userId);
+      return { success: true };
+    } catch (error) {
+      return { success: false, message: error.message };
+    }
   }
 
   // ===================== ADMIN METHODS =====================
   getAllUsers() {
-    return this.db.prepare('SELECT id, username, role, name, email, isActive, createdAt FROM users ORDER BY createdAt DESC').all()
+    return this.db.prepare('SELECT id, username, role, name, email, isActive, canAccessBilling, canAccessReports, canEditPaidBills, createdAt FROM users ORDER BY createdAt DESC').all()
       .map(user => ({ ...user, role: normalizeRole(user.role) }));
   }
 
@@ -416,10 +459,13 @@ class DatabaseManager {
       if (!data.password) return { success: false, message: 'Password is required.' };
       const id = uuidv4();
       const isActive = data.hasOwnProperty('isActive') ? (data.isActive ? 1 : 0) : 1;
+      const canAccessBilling = data.hasOwnProperty('canAccessBilling') ? (data.canAccessBilling ? 1 : 0) : 1;
+      const canAccessReports = data.hasOwnProperty('canAccessReports') ? (data.canAccessReports ? 1 : 0) : 1;
+      const canEditPaidBills = data.hasOwnProperty('canEditPaidBills') ? (data.canEditPaidBills ? 1 : 0) : 0;
       this.db.prepare(`
-        INSERT INTO users (id, username, password, role, name, email, isActive)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(id, data.username, hashPassword(data.password), normalizeRole(data.role), data.name, data.email || null, isActive);
+        INSERT INTO users (id, username, password, role, name, email, isActive, canAccessBilling, canAccessReports, canEditPaidBills)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(id, data.username, hashPassword(data.password), normalizeRole(data.role), data.name, data.email || null, isActive, canAccessBilling, canAccessReports, canEditPaidBills);
       return { success: true, id };
     } catch (error) {
       return { success: false, message: error.message };
@@ -432,19 +478,22 @@ class DatabaseManager {
       if (!existing) return { success: false, message: 'User not found.' };
 
       const isActive = data.hasOwnProperty('isActive') ? (data.isActive ? 1 : 0) : existing.isActive;
+      const canAccessBilling = data.hasOwnProperty('canAccessBilling') ? (data.canAccessBilling ? 1 : 0) : existing.canAccessBilling;
+      const canAccessReports = data.hasOwnProperty('canAccessReports') ? (data.canAccessReports ? 1 : 0) : existing.canAccessReports;
+      const canEditPaidBills = data.hasOwnProperty('canEditPaidBills') ? (data.canEditPaidBills ? 1 : 0) : existing.canEditPaidBills;
 
       if (data.password) {
         this.db.prepare(`
           UPDATE users
-          SET username = ?, name = ?, email = ?, role = ?, isActive = ?, password = ?
+          SET username = ?, name = ?, email = ?, role = ?, isActive = ?, canAccessBilling = ?, canAccessReports = ?, canEditPaidBills = ?, password = ?
           WHERE id = ?
-        `).run(data.username, data.name, data.email || null, normalizeRole(data.role), isActive, hashPassword(data.password), id);
+        `).run(data.username, data.name, data.email || null, normalizeRole(data.role), isActive, canAccessBilling, canAccessReports, canEditPaidBills, hashPassword(data.password), id);
       } else {
         this.db.prepare(`
           UPDATE users
-          SET username = ?, name = ?, email = ?, role = ?, isActive = ?
+          SET username = ?, name = ?, email = ?, role = ?, isActive = ?, canAccessBilling = ?, canAccessReports = ?, canEditPaidBills = ?
           WHERE id = ?
-        `).run(data.username, data.name, data.email || null, normalizeRole(data.role), isActive, id);
+        `).run(data.username, data.name, data.email || null, normalizeRole(data.role), isActive, canAccessBilling, canAccessReports, canEditPaidBills, id);
       }
 
       return { success: true };
@@ -1125,12 +1174,14 @@ class DatabaseManager {
       const existing = this.db.prepare('SELECT * FROM bills WHERE id = ? AND userId = ?').get(id, userId);
       if (!existing) return { success: false, message: 'Bill not found.' };
       const existingStatus = existing.status || existing.paymentStatus;
-      if (existingStatus === 'Paid' || existingStatus === 'completed') {
+      const user = this.getUser(userId);
+      const canEditPaidBill = ['super_admin', 'admin'].includes(normalizeRole(user?.role)) || user?.canEditPaidBills === 1;
+      if ((existingStatus === 'Paid' || existingStatus === 'completed') && !canEditPaidBill) {
         return { success: false, message: 'Paid bills cannot be edited.' };
       }
 
       const billDate = data.billDate || data.date || existing.billDate || getTodayString();
-      if (isBackdated(billDate)) {
+      if (String(billDate).slice(0, 10) !== String(existing.billDate || '').slice(0, 10) && isBackdated(billDate)) {
         return { success: false, message: 'Backdated billing is not allowed.' };
       }
 
@@ -1254,43 +1305,42 @@ class DatabaseManager {
 
     return this.db.prepare(`
       SELECT
-        r.id as referralId,
-        DATE(r.referralDate) as visitDate,
+        b.id as referralId,
+        DATE(b.billDate) as visitDate,
         p.name as patientName,
         p.mobile as patientMobile,
         p.age as patientAge,
         p.gender as patientGender,
         d.name as doctorName,
         d.mobile as doctorMobile,
-        COALESCE(r.serviceType, p.test, '') as test,
-        r.notes as referralNotes,
-        GROUP_CONCAT(DISTINCT b.billNo) as billNos,
-        COALESCE(SUM(CASE WHEN b.id IS NOT NULL THEN COALESCE(NULLIF(b.amount, 0), b.subtotal, 0) ELSE 0 END), 0) as amount,
-        COALESCE(SUM(CASE WHEN b.id IS NOT NULL THEN COALESCE(b.discount, 0) ELSE 0 END), 0) as discount,
-        COALESCE(SUM(CASE WHEN b.id IS NOT NULL THEN COALESCE(NULLIF(b.finalAmount, 0), b.total, 0) ELSE 0 END), 0) as finalAmount,
-        COALESCE(SUM(CASE WHEN b.id IS NOT NULL AND (b.status = 'Paid' OR b.paymentStatus IN ('Paid', 'completed')) THEN COALESCE(NULLIF(b.finalAmount, 0), b.total, 0) WHEN b.id IS NOT NULL THEN COALESCE(b.paidAmount, 0) ELSE 0 END), 0) as paidAmount,
-        COALESCE(SUM(
-          CASE
-            WHEN b.id IS NOT NULL AND (b.status = 'Paid' OR b.paymentStatus IN ('Paid', 'completed')) THEN 0
-            WHEN b.id IS NOT NULL AND b.dueAmount IS NOT NULL THEN b.dueAmount
-            WHEN b.id IS NOT NULL AND (COALESCE(NULLIF(b.finalAmount, 0), b.total, 0) - COALESCE(b.paidAmount, 0)) > 0 THEN COALESCE(NULLIF(b.finalAmount, 0), b.total, 0) - COALESCE(b.paidAmount, 0)
-            ELSE 0
-          END
-        ), 0) as pendingAmount,
-        GROUP_CONCAT(DISTINCT b.paymentMode) as paymentModes,
+        COALESCE(b.test, r.serviceType, p.test, '') as test,
+        COALESCE(b.notes, r.notes, '') as referralNotes,
+        COALESCE(b.billNo, b.id) as billNos,
+        COALESCE(NULLIF(b.amount, 0), b.subtotal, 0) as amount,
+        COALESCE(b.discount, 0) as discount,
+        COALESCE(NULLIF(b.finalAmount, 0), b.total, 0) as finalAmount,
         CASE
-          WHEN COUNT(b.id) = 0 THEN 'No Bill'
-          WHEN SUM(CASE WHEN b.status = 'Paid' OR b.paymentStatus IN ('Paid', 'completed') THEN 0 ELSE 1 END) = 0 THEN 'Paid'
+          WHEN b.status = 'Paid' OR b.paymentStatus IN ('Paid', 'completed') THEN COALESCE(NULLIF(b.finalAmount, 0), b.total, 0)
+          ELSE COALESCE(b.paidAmount, 0)
+        END as paidAmount,
+        CASE
+          WHEN b.status = 'Paid' OR b.paymentStatus IN ('Paid', 'completed') THEN 0
+          WHEN b.dueAmount IS NOT NULL THEN b.dueAmount
+          WHEN (COALESCE(NULLIF(b.finalAmount, 0), b.total, 0) - COALESCE(b.paidAmount, 0)) > 0 THEN COALESCE(NULLIF(b.finalAmount, 0), b.total, 0) - COALESCE(b.paidAmount, 0)
+          ELSE 0
+        END as pendingAmount,
+        b.paymentMode as paymentModes,
+        CASE
+          WHEN b.status = 'Paid' OR b.paymentStatus IN ('Paid', 'completed') THEN 'Paid'
+          WHEN COALESCE(b.paidAmount, 0) >= COALESCE(NULLIF(b.finalAmount, 0), b.total, 0) THEN 'Paid'
           ELSE 'Pending'
         END as paymentStatus
-      FROM referrals r
-      LEFT JOIN patients p ON r.patientId = p.id
-      LEFT JOIN doctors d ON r.doctorId = d.id
-      LEFT JOIN bills b ON b.referralId = r.id
-        OR (b.referralId IS NULL AND b.patientId = r.patientId AND DATE(b.billDate) = DATE(r.referralDate))
-      WHERE DATE(r.referralDate) >= ? AND r.userId = ?
-      GROUP BY r.id
-      ORDER BY DATE(r.referralDate) DESC, p.name ASC
+      FROM bills b
+      LEFT JOIN patients p ON b.patientId = p.id
+      LEFT JOIN referrals r ON b.referralId = r.id
+      LEFT JOIN doctors d ON d.id = b.referralDoctorId
+      WHERE DATE(b.billDate) >= ? AND b.userId = ?
+      ORDER BY DATE(b.billDate) DESC, COALESCE(b.billNo, b.id) ASC
     `).all(start, userId);
   }
 
