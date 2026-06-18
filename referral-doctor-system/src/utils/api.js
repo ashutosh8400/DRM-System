@@ -804,43 +804,56 @@ class APIClient {
 
         const toDateKey = (value) => String(value || '').slice(0, 10);
         const getFinalAmount = (bill) => Number(bill.finalAmount || bill.total || Math.max(0, Number(bill.amount || bill.subtotal || 0) - Number(bill.discount || 0)));
-        const isPaidBill = (bill) => ['Paid', 'completed'].includes(bill.status || bill.paymentStatus);
+        const isPaidBill = (bill) => ['Paid', 'completed'].includes(bill.status) || ['Paid', 'completed'].includes(bill.paymentStatus);
+        const splitReportTests = (value) => String(value || '')
+          .toLowerCase()
+          .split(',')
+          .map(test => test.trim())
+          .filter(Boolean);
+        const hasMatchingTest = (bill, ref) => {
+          const billTests = splitReportTests(bill.test);
+          const referralTests = splitReportTests(ref.serviceType);
+          if (billTests.length === 0 || referralTests.length === 0) return false;
+          return billTests.some(billTest => referralTests.some(refTest => billTest.includes(refTest) || refTest.includes(billTest)));
+        };
 
-        return referrals
-          .filter(r => new Date(r.referralDate) >= cutoff)
-          .map(ref => {
-            const patient = patients.find(p => p.id === ref.patientId) || {};
-            const doctor = doctors.find(d => d.id === ref.doctorId) || {};
-            const refDate = toDateKey(ref.referralDate);
-            const matchedBills = bills.filter(b => (
-              b.referralId === ref.id ||
-              (!b.referralId && b.patientId === ref.patientId && toDateKey(b.billDate) === refDate)
-            ));
-            const amount = matchedBills.reduce((sum, b) => sum + Number(b.amount || b.subtotal || 0), 0);
-            const discount = matchedBills.reduce((sum, b) => sum + Number(b.discount || 0), 0);
-            const finalAmount = matchedBills.reduce((sum, b) => sum + getFinalAmount(b), 0);
-            const paidAmount = matchedBills.reduce((sum, b) => sum + (isPaidBill(b) ? getFinalAmount(b) : Number(b.paidAmount || 0)), 0);
-            const pendingAmount = Math.max(0, finalAmount - paidAmount);
+        return bills
+          .filter(b => new Date(b.billDate) >= cutoff)
+          .map(bill => {
+            const patient = patients.find(p => p.id === bill.patientId) || {};
+            const fallbackReferral = referrals.find(ref => {
+              if (bill.referralId && ref.id === bill.referralId) return true;
+              if (bill.patientId !== ref.patientId) return false;
+              const sameDate = toDateKey(bill.billDate) === toDateKey(ref.referralDate);
+              const sameDoctor = bill.referralDoctorId && bill.referralDoctorId === ref.doctorId;
+              return sameDate || (sameDoctor && hasMatchingTest(bill, ref));
+            }) || {};
+            const doctor = doctors.find(d => d.id === bill.referralDoctorId) || {};
+            const amount = Number(bill.amount || bill.subtotal || 0);
+            const discount = Number(bill.discount || 0);
+            const finalAmount = getFinalAmount(bill);
+            const paidAmount = isPaidBill(bill) ? finalAmount : Number(bill.paidAmount || 0);
+            const pendingAmount = isPaidBill(bill) ? 0 : Number(bill.dueAmount ?? Math.max(0, finalAmount - paidAmount));
 
             return {
-              referralId: ref.id,
-              visitDate: refDate,
+              referralId: bill.id,
+              visitDate: toDateKey(bill.billDate),
               patientName: patient.name || '',
               patientMobile: patient.mobile || '',
               patientAge: patient.age || '',
               patientGender: patient.gender || '',
               doctorName: doctor.name || '',
               doctorMobile: doctor.mobile || '',
-              test: ref.serviceType || patient.test || '',
-              referralNotes: ref.notes || '',
-              billNos: matchedBills.map(b => b.billNo || b.id).filter(Boolean).join(', '),
+              test: bill.test || fallbackReferral.serviceType || patient.test || '',
+              referralNotes: bill.notes || fallbackReferral.notes || '',
+              billNos: bill.billNo || bill.id,
               amount,
               discount,
               finalAmount,
               paidAmount,
               pendingAmount,
-              paymentModes: [...new Set(matchedBills.map(b => b.paymentMode).filter(Boolean))].join(', '),
-              paymentStatus: matchedBills.length === 0 ? 'No Bill' : pendingAmount <= 0 ? 'Paid' : 'Pending',
+              paymentModes: bill.paymentMode || '',
+              paymentStatus: pendingAmount <= 0 ? 'Paid' : 'Pending',
             };
           })
           .sort((a, b) => String(b.visitDate).localeCompare(String(a.visitDate)) || String(a.patientName).localeCompare(String(b.patientName)));

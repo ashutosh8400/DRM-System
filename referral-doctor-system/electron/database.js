@@ -1276,43 +1276,42 @@ class DatabaseManager {
 
     return this.db.prepare(`
       SELECT
-        r.id as referralId,
-        DATE(r.referralDate) as visitDate,
+        b.id as referralId,
+        DATE(b.billDate) as visitDate,
         p.name as patientName,
         p.mobile as patientMobile,
         p.age as patientAge,
         p.gender as patientGender,
         d.name as doctorName,
         d.mobile as doctorMobile,
-        COALESCE(r.serviceType, p.test, '') as test,
-        r.notes as referralNotes,
-        GROUP_CONCAT(DISTINCT b.billNo) as billNos,
-        COALESCE(SUM(CASE WHEN b.id IS NOT NULL THEN COALESCE(NULLIF(b.amount, 0), b.subtotal, 0) ELSE 0 END), 0) as amount,
-        COALESCE(SUM(CASE WHEN b.id IS NOT NULL THEN COALESCE(b.discount, 0) ELSE 0 END), 0) as discount,
-        COALESCE(SUM(CASE WHEN b.id IS NOT NULL THEN COALESCE(NULLIF(b.finalAmount, 0), b.total, 0) ELSE 0 END), 0) as finalAmount,
-        COALESCE(SUM(CASE WHEN b.id IS NOT NULL AND (b.status = 'Paid' OR b.paymentStatus IN ('Paid', 'completed')) THEN COALESCE(NULLIF(b.finalAmount, 0), b.total, 0) WHEN b.id IS NOT NULL THEN COALESCE(b.paidAmount, 0) ELSE 0 END), 0) as paidAmount,
-        COALESCE(SUM(
-          CASE
-            WHEN b.id IS NOT NULL AND (b.status = 'Paid' OR b.paymentStatus IN ('Paid', 'completed')) THEN 0
-            WHEN b.id IS NOT NULL AND b.dueAmount IS NOT NULL THEN b.dueAmount
-            WHEN b.id IS NOT NULL AND (COALESCE(NULLIF(b.finalAmount, 0), b.total, 0) - COALESCE(b.paidAmount, 0)) > 0 THEN COALESCE(NULLIF(b.finalAmount, 0), b.total, 0) - COALESCE(b.paidAmount, 0)
-            ELSE 0
-          END
-        ), 0) as pendingAmount,
-        GROUP_CONCAT(DISTINCT b.paymentMode) as paymentModes,
+        COALESCE(b.test, r.serviceType, p.test, '') as test,
+        COALESCE(b.notes, r.notes, '') as referralNotes,
+        COALESCE(b.billNo, b.id) as billNos,
+        COALESCE(NULLIF(b.amount, 0), b.subtotal, 0) as amount,
+        COALESCE(b.discount, 0) as discount,
+        COALESCE(NULLIF(b.finalAmount, 0), b.total, 0) as finalAmount,
         CASE
-          WHEN COUNT(b.id) = 0 THEN 'No Bill'
-          WHEN SUM(CASE WHEN b.status = 'Paid' OR b.paymentStatus IN ('Paid', 'completed') THEN 0 ELSE 1 END) = 0 THEN 'Paid'
+          WHEN b.status = 'Paid' OR b.paymentStatus IN ('Paid', 'completed') THEN COALESCE(NULLIF(b.finalAmount, 0), b.total, 0)
+          ELSE COALESCE(b.paidAmount, 0)
+        END as paidAmount,
+        CASE
+          WHEN b.status = 'Paid' OR b.paymentStatus IN ('Paid', 'completed') THEN 0
+          WHEN b.dueAmount IS NOT NULL THEN b.dueAmount
+          WHEN (COALESCE(NULLIF(b.finalAmount, 0), b.total, 0) - COALESCE(b.paidAmount, 0)) > 0 THEN COALESCE(NULLIF(b.finalAmount, 0), b.total, 0) - COALESCE(b.paidAmount, 0)
+          ELSE 0
+        END as pendingAmount,
+        b.paymentMode as paymentModes,
+        CASE
+          WHEN b.status = 'Paid' OR b.paymentStatus IN ('Paid', 'completed') THEN 'Paid'
+          WHEN COALESCE(b.paidAmount, 0) >= COALESCE(NULLIF(b.finalAmount, 0), b.total, 0) THEN 'Paid'
           ELSE 'Pending'
         END as paymentStatus
-      FROM referrals r
-      LEFT JOIN patients p ON r.patientId = p.id
-      LEFT JOIN doctors d ON r.doctorId = d.id
-      LEFT JOIN bills b ON b.referralId = r.id
-        OR (b.referralId IS NULL AND b.patientId = r.patientId AND DATE(b.billDate) = DATE(r.referralDate))
-      WHERE DATE(r.referralDate) >= ? AND r.userId = ?
-      GROUP BY r.id
-      ORDER BY DATE(r.referralDate) DESC, p.name ASC
+      FROM bills b
+      LEFT JOIN patients p ON b.patientId = p.id
+      LEFT JOIN referrals r ON b.referralId = r.id
+      LEFT JOIN doctors d ON d.id = b.referralDoctorId
+      WHERE DATE(b.billDate) >= ? AND b.userId = ?
+      ORDER BY DATE(b.billDate) DESC, COALESCE(b.billNo, b.id) ASC
     `).all(start, userId);
   }
 
